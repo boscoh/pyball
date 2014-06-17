@@ -3,6 +3,8 @@
 
 A pure Python OpenGL ES protein viewer
 
+![screen shot](screen_shot.png)
+
 # Dependencies
 
  - numpy
