@@ -15,7 +15,15 @@ Written against Python 2.7. The dependencies are:
 
 To install, do:
 
-    pip install numpy pdbremix pyopengl
+    pip install numpy pyopengl
+
+Then download:
+
+    https://github.com/boscoh/pdbremix/archive/master.zip
+
+And in the `pdbremix` directory:
+
+    python setup.py install
 
 # Usage
 
@@ -23,5 +31,5 @@ To install, do:
 
 # Sidechains
 
-Press 's' to turn sidechains on/off
-Press 'q' to exit
+Press `s` to turn sidechains on/off  
+Press `q` to exit
