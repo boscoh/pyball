@@ -18,6 +18,7 @@ With bits adapted from Renaud Blanch's PyOpenGl tutorials
 import os
 import sys
 from math import exp
+import math
 from pprint import pprint
 import time
 
@@ -656,15 +657,29 @@ class PyBall:
       self.is_mouse_right_down = (state == GLUT_DOWN)
       self.save_mouse_x, self.save_mouse_y = x, y
 
+  def get_polar(self, in_x, in_y):
+    x = in_x - self.width/2
+    y = in_y - self.height/2
+    r = math.sqrt(x*x + y*y)
+    theta = math.atan(y/float(x))
+    if x<0:
+      if y>0:
+        theta += math.pi
+      else:
+        theta -= math.pi
+    return r, theta
+
   def motion(self, x1, y1):
     if self.is_mouse_left_down:
       old_x, old_y = self.screen2space(self.save_mouse_x, self.save_mouse_y)
       x, y = self.screen2space(x1, y1)
       self.camera.rotate_xy(0.1*(x-old_x), 0.1*(y-old_y))
     if self.is_mouse_right_down:
-      diff = (x1-self.save_mouse_x)-(y1-self.save_mouse_y)
-      new_scale = exp((diff)*.01)
+      old_r, old_theta = self.get_polar(self.save_mouse_x, self.save_mouse_y)
+      r, theta = self.get_polar(x1, y1) 
+      new_scale = exp((r-old_r)*.01)
       self.camera.rescale(new_scale)
+      self.camera.rotate_z(theta - old_theta)
     self.save_mouse_x, self.save_mouse_y = x1, y1
     glutPostRedisplay()
 

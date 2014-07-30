@@ -42,6 +42,10 @@ class Camera:
     new_rotation = v3.combine(rot_along_x, rot_along_y)
     self.rotation = v3.combine(new_rotation, self.rotation)
 
+  def rotate_z(self, rad_around_z):
+    rot_along_z = v3.rotation(v3.vector(0, 0, -1), rad_around_z)
+    self.rotation = v3.combine(rot_along_z, self.rotation)
+
   def rescale(self, new_scale):
     self.scale *= new_scale 
     
