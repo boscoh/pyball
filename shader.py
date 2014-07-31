@@ -42,6 +42,7 @@ uniform bool is_lighting;
 uniform bool is_fog;
 uniform float fog_near;
 uniform float fog_far;
+uniform vec3 fog_color;
 
 varying vec3 N, L, S;
 
@@ -60,7 +61,7 @@ void main() {
     float depth = gl_FragCoord.z / gl_FragCoord.w;
     float fog_factor = smoothstep(fog_near, fog_far, depth);
     gl_FragColor = mix(
-        gl_FragColor, vec4(vec3(0, 0, 0), gl_FragColor.w), fog_factor);
+        gl_FragColor, vec4(fog_color, gl_FragColor.w), fog_factor);
   }
 }
 """
@@ -102,6 +103,49 @@ void main(void) {
   gl_FragColor = vec4(float(red), float(green), float(blue), 255.0)/255.0;
 }
 """
+
+
+# outline vertex shader. Expands vertices along the (in-screen) xy
+# components of the normals.
+outline_vertex_shader = """
+
+attribute vec3 vertex;
+attribute vec3 normal;
+attribute vec3 color;
+                                                                       
+uniform mat4 modelview_matrix;
+uniform mat3 normal_matrix;
+
+varying vec3 N;
+
+void main(void) {
+  gl_Position = modelview_matrix * vec4(vertex, 1.0);
+  N = normalize(normal_matrix * normal);
+  gl_Position.xy += N.xy*0.100;
+}
+"""
+
+# outline shader. mixes outlineColor with fogColor
+outline_fragment_shader = """
+
+uniform vec3 outline_color;
+uniform float fog_near;
+uniform float fog_far;
+uniform vec3 fog_color;
+uniform bool is_fog;
+
+void main() {
+  gl_FragColor = vec4(outline_color, 1.0);
+  float depth = gl_FragCoord.z / gl_FragCoord.w;
+  if (is_fog) { 
+    float fog_factor = smoothstep(fog_near, fog_far, depth);
+    gl_FragColor = mix(
+        gl_FragColor, vec4(fog_color, gl_FragColor.w), fog_factor);
+  }
+}
+"""
+
+
 
 
 class Shader():
@@ -170,6 +214,9 @@ class Shader():
   def set_vec4(self, var_name, c_float_4):
     gl.glUniform4f(self.locations[var_name], *c_float_4)
 
+  def set_vec3(self, var_name, c_float_3):
+    gl.glUniform3f(self.locations[var_name], *c_float_3)
+
   def set_float(self, var_name, c_float):
     gl.glUniform1f(
         self.locations[var_name],
@@ -183,6 +230,8 @@ class Shader():
     self.set_vec4('light_position', camera.light_position)
     self.set_float('fog_near', camera.fog_near)
     self.set_float('fog_far', camera.fog_far)
+    self.set_vec3('fog_color', camera.fog_color)
+    self.set_vec3('outline_color', camera.outline_color)
 
 
 
@@ -202,6 +251,8 @@ class ShaderCatalog:
       "fog_near",
       "fog_far",
       "is_fog",
+      "fog_color",
+      "outline_color",
     ]
     self.catalog = {
       'default': 
@@ -214,6 +265,12 @@ class ShaderCatalog:
         Shader(
           select_vertex_shader, 
           select_fragment_shader,
+          vertex_attribs, 
+          uniforms),
+      'outline': 
+        Shader(
+          outline_vertex_shader, 
+          outline_fragment_shader,
           vertex_attribs, 
           uniforms)
     }

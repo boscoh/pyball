@@ -536,10 +536,18 @@ class OpenGlHandler():
       draw_object.draw(self.shader)
 
   def draw_to_screen(self):
+    bg_color = self.camera.fog_color + [1.]
+    gl.glClearColor(*bg_color)
     gl.glClear(gl.GL_COLOR_BUFFER_BIT|gl.GL_DEPTH_BUFFER_BIT)
-    gl.glClearColor(*self.bg_rgb)
-    gl.glDisable(gl.GL_CULL_FACE)
     gl.glEnable(gl.GL_DEPTH_TEST)
+    gl.glDisable(gl.GL_BLEND)
+    gl.glCullFace(gl.GL_BACK);
+    gl.glEnable(gl.GL_CULL_FACE);
+    # self.draw_objects_with_shader('outline')
+    gl.glEnable(gl.GL_BLEND)
+    gl.glCullFace(gl.GL_FRONT)
+    gl.glEnable(gl.GL_CULL_FACE)
+    gl.glDisable(gl.GL_CULL_FACE)
     gl.glDepthFunc(gl.GL_LEQUAL)
     self.draw_objects_with_shader('default')
 
@@ -547,8 +555,8 @@ class OpenGlHandler():
     gl.glDisable(gl.GL_BLEND)
     gl.glClearColor(0.0, 0.0, 0.0, 0.0)
     gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-    # gl.glCullFace(gl.GL_FRONT)
-    # gl.glEnable(gl.GL_CULL_FACE)
+    gl.glCullFace(gl.GL_FRONT)
+    gl.glEnable(gl.GL_CULL_FACE)
     self.draw_objects_with_shader('select')
     pixels = (c_float*4)()
     y_screen = self.height - y # screen and OpenGL y coord flipped

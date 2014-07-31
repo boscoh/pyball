@@ -29,15 +29,17 @@ class Camera:
   def __init__(self):
     self.rotation = v3.identity()
     self.center = v3.vector()
-    self.scale = 1.0
+    self.scale = 1.
     self.is_perspective = True
     self.is_lighting = True
     self.fog_near = -3
     self.fog_far = 20
     self.is_fog = True
     self.light_position = [100., 100., 500., 0.]
-    self.half_width = 1.0
-    self.half_height = 1.0
+    self.fog_color = [0, 0, 0]
+    self.outline_color = [1., 1., 1.]
+    self.half_width = 1.
+    self.half_height = 1.
 
   def rotate_xy(self, rad_around_x, rad_around_y):
     rot_along_x = v3.rotation(v3.vector(0, 1, 0), rad_around_x)
