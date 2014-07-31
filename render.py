@@ -6,6 +6,7 @@ polygon triangle strips to form meshes for OpenGL display.
 """
 
 import math
+
 from ctypes import sizeof, c_float, c_void_p, c_uint
 
 from pdbremix import v3numpy as v3

@@ -688,9 +688,9 @@ class PyBall:
 
   def motion(self, x_mouse, y_mouse):
     if self.is_mouse_left_down:
-      radius = self.opengl.camera.scale
-      x_diff = 0.1*radius*(x_mouse - self.x_mouse_save)
-      y_diff = 0.1*radius*-(y_mouse - self.y_mouse_save)
+      scale = 0.5/self.opengl.camera.scale/math.sqrt(self.width**2 + self.height**2)
+      x_diff = scale*(x_mouse - self.x_mouse_save)
+      y_diff = scale*-(y_mouse - self.y_mouse_save)
       self.opengl.camera.rotate_xy(x_diff, y_diff)
     if self.is_mouse_right_down:
       r_save, theta_save = self.get_polar(self.x_mouse_save, self.y_mouse_save)

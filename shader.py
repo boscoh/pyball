@@ -35,8 +35,8 @@ void main() {
 """
 
 fragment_shader_source = b"""
-const vec4 acs = vec4(.2, .2, .2, 1.); // ambient color of scene
-const vec4 di0 = vec4(1., 1., 1., 1.); // diffuse intensity of light 0
+const vec4 ambient_color = vec4(.2, .2, .2, 1.);
+const vec4 diffuse_intensity = vec4(1., 1., 1., 1.); 
 
 uniform bool is_lighting;
 uniform bool is_fog;
@@ -49,8 +49,8 @@ varying vec3 N, L, S;
 void main() {
   vec4 color = gl_Color;
   if (is_lighting) {
-    vec4 ambient = color * acs;
-    vec4 diffuse = color * di0;
+    vec4 ambient = color * ambient_color;
+    vec4 diffuse = color * diffuse_intensity;
     float d = max(0., dot(N, L));
     color = clamp(ambient + diffuse * d, 0., 1.);
   }
