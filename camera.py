@@ -32,6 +32,9 @@ class Camera:
     self.scale = 1.0
     self.is_perspective = True
     self.is_lighting = True
+    self.fog_near = -3
+    self.fog_far = 20
+    self.is_fog = True
     self.light_position = [100., 100., 500., 0.]
     self.half_width = 1.0
     self.half_height = 1.0

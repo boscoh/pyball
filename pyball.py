@@ -22,16 +22,15 @@ import math
 from pprint import pprint
 import time
 
-from ctypes import sizeof, c_float, c_void_p, c_uint, string_at
+from ctypes import c_float
 
-from OpenGL.GLUT import *
-from OpenGL.GL import *
+import OpenGL.GLUT as glut
+import OpenGL.GL as gl
 
 from pdbremix import pdbatoms
-import pdbremix.v3numpy as v3
+from pdbremix import v3numpy as v3
 from pdbremix.data import backbone_atoms
 
-import png
 import camera
 import shader
 import render
@@ -252,15 +251,15 @@ class RenderedSoup():
           i = j-1
 
   def find_bonds(self):
-    self.display_atoms = self.soup.atoms()
+    self.draw_to_screen_atoms = self.soup.atoms()
     backbone_atoms.remove('CA')
-    self.display_atoms = [a for a in self.display_atoms if a.type not in backbone_atoms and a.element!="H"]
-    vertices = [a.pos for a in self.display_atoms]
+    self.draw_to_screen_atoms = [a for a in self.draw_to_screen_atoms if a.type not in backbone_atoms and a.element!="H"]
+    vertices = [a.pos for a in self.draw_to_screen_atoms]
     self.bonds = []
     print "Finding bonds..."
     for i, j in SpaceHash(vertices).close_pairs():
-      atom1 = self.display_atoms[i]
-      atom2 = self.display_atoms[j]
+      atom1 = self.draw_to_screen_atoms[i]
+      atom2 = self.draw_to_screen_atoms[j]
       d = 2
       if atom1.element == 'H' or atom2.element == 'H':
         continue
@@ -463,7 +462,7 @@ class BallAndStickRenderer():
     self.trace = trace
     self.sphere = render.SphereShape(6, 6, 10)
     self.cylinder = render.CylinderShape(6)
-    self.n_vertex = len(self.trace.display_atoms)*self.sphere.n_vertex
+    self.n_vertex = len(self.trace.draw_to_screen_atoms)*self.sphere.n_vertex
     self.n_vertex += len(self.trace.bonds)*self.cylinder.n_vertex
 
   def render_to_buffer(self, vertex_buffer):
@@ -473,7 +472,7 @@ class BallAndStickRenderer():
       'H': (1.0, 0.4, 0.4),
       'E': (0.4, 0.4, 1.0)
     }
-    for atom in self.trace.display_atoms:
+    for atom in self.trace.draw_to_screen_atoms:
       point = atom.pos
       if hasattr(atom, 'res_objid'):
         objid = atom.res_objid
@@ -518,6 +517,56 @@ def make_ball_and_stick_mesh(trace):
   return vertex_buffer
 
 
+
+class OpenGlHandler():
+  def __init__(self, width, height):
+    self.camera = camera.Camera()
+    self.new_camera = camera.Camera()
+    self.reshape(width, height)
+    self.shader_catalog = shader.ShaderCatalog()
+    self.shader = self.shader_catalog.shader
+    self.draw_objects = []
+    self.bg_rgb = (0.0, 0.0, 0.0, 0.0)
+
+  def draw_objects_with_shader(self, shader_type):
+    self.shader = self.shader_catalog.catalog[shader_type]
+    gl.glUseProgram(self.shader.program)
+    self.shader.bind_camera(self.camera)
+    for draw_object in self.draw_objects:
+      draw_object.draw(self.shader)
+
+  def draw_to_screen(self):
+    gl.glClear(gl.GL_COLOR_BUFFER_BIT|gl.GL_DEPTH_BUFFER_BIT)
+    gl.glClearColor(*self.bg_rgb)
+    gl.glDisable(gl.GL_CULL_FACE)
+    gl.glEnable(gl.GL_DEPTH_TEST)
+    gl.glDepthFunc(gl.GL_LEQUAL)
+    self.draw_objects_with_shader('default')
+
+  def pick(self, x, y):
+    gl.glDisable(gl.GL_BLEND)
+    gl.glClearColor(0.0, 0.0, 0.0, 0.0)
+    gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+    # gl.glCullFace(gl.GL_FRONT)
+    # gl.glEnable(gl.GL_CULL_FACE)
+    self.draw_objects_with_shader('select')
+    pixels = (c_float*4)()
+    y_screen = self.height - y # screen and OpenGL y coord flipped
+    gl.glReadPixels(x, y_screen, 1, 1, gl.GL_RGBA, gl.GL_FLOAT, pixels)
+    objid = int(pixels[2]*255*256*256)
+    objid += int(pixels[1]*255*256)
+    objid += int(pixels[0]*255)
+    return objid
+
+  def reshape(self, width, height):
+    gl.glViewport(0, 0, width, height)
+    radius = .5 * min(width, height)
+    self.camera.set_screen(width/radius, height/radius)
+    self.width = width
+    self.height = height
+
+
+
 class PyBall:
   """
   Ties everything together.
@@ -530,138 +579,98 @@ class PyBall:
     self.is_mouse_left_down = False
     self.is_mouse_right_down  = False
 
-    self.save_mouse_x = 0.0
-    self.save_mouse_y = 0.0
+    self.x_mouse_save = 0.0
+    self.y_mouse_save = 0.0
 
     self.init_glut(title)
 
-    # now glut is initialized, build shaders
-    self.shader_catalog = shader.ShaderCatalog()
-    self.shader = self.shader_catalog.shader
-    
+    self.opengl = OpenGlHandler(self.width, self.height)
+
     self.soup = pdbatoms.Soup(pdb)
     self.rendered_soup = RenderedSoup(self.soup)
 
-    self.camera = camera.Camera()
-    self.camera.rescale(self.rendered_soup.scale)
-    self.camera.set_center(self.rendered_soup.center)
+    self.opengl.camera.rescale(self.rendered_soup.scale)
+    self.opengl.camera.set_center(self.rendered_soup.center)
 
-    self.new_camera = camera.Camera()
-    self.new_camera.rescale(self.rendered_soup.scale)
+    self.opengl.new_camera.rescale(self.rendered_soup.scale)
+
     self.n_step_animate = 0
 
     self.cylinder_draw_object = make_cylinder_trace_mesh(self.rendered_soup, 6, 5, 10)
     self.ribbon_draw_object = make_carton_mesh(self.rendered_soup)
     self.ball_stick_draw_object = make_ball_and_stick_mesh(self.rendered_soup)
-
     self.is_stick = False
-    self.draw_objects = [
-        self.ribbon_draw_object,
-    ]
+    self.opengl.draw_objects.append(self.ribbon_draw_object)
+
     self.set_callbacks()
 
     self.last = time.time()
 
   def init_glut(self, title):
-    glutInit()
-    glutInitWindowSize(self.width, self.height)
-    glutInitDisplayMode(GLUT_RGBA|GLUT_DOUBLE|GLUT_DEPTH)
-    glutCreateWindow(title)
+    glut.glutInit()
+    glut.glutInitWindowSize(self.width, self.height)
+    glut.glutInitDisplayMode(glut.GLUT_RGBA|glut.GLUT_DOUBLE|glut.GLUT_DEPTH)
+    glut.glutCreateWindow(title)
     
-  def draw_to_gl(self):
-    glUseProgram(self.shader.program)
-    self.shader.bind_camera(self.camera)
-    for draw_object in self.draw_objects:
-      draw_object.draw(self.shader)
-
-  def display(self):
-    """window redisplay callback."""
-    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-    glClearColor(0.0, 0.0, 0.0, 0.0)
-    glDisable(GL_CULL_FACE)
-    glEnable(GL_DEPTH_TEST)
-    glDepthFunc(GL_LEQUAL)
-    self.shader = self.shader_catalog.catalog['default']
-    self.draw_to_gl()
-    glDisable(GL_DEPTH_TEST)
-    glColor3f(1, 1, 1)
-    glRasterPos2f(100, 100)
-    for ch in 'hello':
-      glutBitmapCharacter(GLUT_BITMAP_9_BY_15, c_int(ord(ch)))
-    glutSwapBuffers()
-
-  def pick(self, x, y):
-    glDisable(GL_BLEND)
-    glClearColor(0.0, 0.0, 0.0, 0.0)
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    glCullFace(GL_FRONT)
-    glEnable(GL_CULL_FACE)
-    self.shader = self.shader_catalog.catalog['select']
-    self.draw_to_gl()
-    pixels = (c_float*4)()
-    glReadPixels(x, self.height - y, 1, 1, GL_RGBA, GL_FLOAT, pixels)
-    self.objid = int(pixels[2]*255*256*256)
-    self.objid += int(pixels[1]*255*256)
-    self.objid += int(pixels[0]*255)
+  def draw_to_screen(self):
+    self.opengl.draw_to_screen()
+    glut.glutSwapBuffers()
 
   def reshape(self, width, height):
     """window reshape callback."""
-    glViewport(0, 0, width, height)
-    radius = .5 * min(width, height)
-    self.camera.set_screen(width/radius, height/radius)
-    self.display() 
+    self.opengl.reshape(width, height)
+    self.opengl.draw_to_screen() 
 
   def get_window_dims(self):
-    self.width = glutGet(GLUT_WINDOW_WIDTH)
-    self.height = glutGet(GLUT_WINDOW_HEIGHT)
+    return glut.glutGet(glut.GLUT_WINDOW_WIDTH), glut.glutGet(glut.GLUT_WINDOW_HEIGHT)
 
   def keyboard(self, c, x=0, y=0):
     """keyboard callback."""
     if c == b'p':
       is_perspective = not self.camera.is_perspective
-      self.camera.is_perspective = is_perspective
-      self.reshape(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT))
+      self.opengl.camera.is_perspective = is_perspective
+      self.reshape(glut.glutGet(glut.GLUT_WINDOW_WIDTH), glut.glutGet(glut.GLUT_WINDOW_HEIGHT))
     elif c == b'l':
       is_lighting = not self.camera.is_lighting
-      self.camera.is_lighting = is_lighting
+      self.opengl.camera.is_lighting = is_lighting
     elif c == b'q':
       sys.exit(0)
     elif c == b's':
       self.is_stick = not self.is_stick
-      self.draw_objects = []
-      self.draw_objects.append(self.ribbon_draw_object)
+      self.opengl.draw_objects = []
+      self.opengl.draw_objects.append(self.ribbon_draw_object)
       if self.is_stick:
-        self.draw_objects.append(self.ball_stick_draw_object)
-    glutPostRedisplay()
-
-  def screen2space(self, x, y):
-    self.get_window_dims()
-    radius = min(self.width, self.height)*self.camera.scale
-    return (2.*x-self.width)/radius, -(2.*y-self.height)/radius
+        self.opengl.draw_objects.append(self.ball_stick_draw_object)
+    glut.glutPostRedisplay()
 
   def mouse(self, button, state, x, y):
-    if button == GLUT_LEFT_BUTTON:
-      self.pick(x, y)
-      if state == GLUT_DOWN:
+    if button == glut.GLUT_LEFT_BUTTON:
+      self.objid = self.opengl.pick(x, y)
+      if state == glut.GLUT_DOWN:
         self.save_objid = self.objid
       else:
         if self.save_objid == self.objid and self.objid > 0:
           atom = self.rendered_soup.objid_ref[self.objid]
-          s = str(self.objid) + ' ' + atom_name(atom)
-          self.new_camera.center = atom.pos
+          self.opengl.new_camera.center = atom.pos
           self.n_step_animate = 10
-          print x, y, s, self.n_step_animate
-      self.is_mouse_left_down = (state == GLUT_DOWN)
-      self.save_mouse_x, self.save_mouse_y = x, y
-    elif button == GLUT_RIGHT_BUTTON:
-      self.is_mouse_right_down = (state == GLUT_DOWN)
-      self.save_mouse_x, self.save_mouse_y = x, y
+          print x, y, atom_name(atom)
+      self.is_mouse_left_down = (state == glut.GLUT_DOWN)
+      self.x_mouse_save, self.y_mouse_save = x, y
+    elif button == glut.GLUT_RIGHT_BUTTON:
+      self.is_mouse_right_down = (state == glut.GLUT_DOWN)
+      self.x_mouse_save, self.y_mouse_save = x, y
 
-  def get_polar(self, in_x, in_y):
-    x = in_x - self.width/2
-    y = in_y - self.height/2
+  def get_polar(self, x_mouse, y_mouse):
+    x = x_mouse - self.opengl.width/2
+    y = y_mouse - self.opengl.height/2
     r = math.sqrt(x*x + y*y)
-    theta = math.atan(y/float(x))
+    if x != 0.0:
+      theta = math.atan(y/float(x))
+    else:
+      if y > 0:
+        theta = math.pi/2
+      else:
+        theta = -math.pi/2
     if x<0:
       if y>0:
         theta += math.pi
@@ -669,19 +678,19 @@ class PyBall:
         theta -= math.pi
     return r, theta
 
-  def motion(self, x1, y1):
+  def motion(self, x_mouse, y_mouse):
     if self.is_mouse_left_down:
-      old_x, old_y = self.screen2space(self.save_mouse_x, self.save_mouse_y)
-      x, y = self.screen2space(x1, y1)
-      self.camera.rotate_xy(0.1*(x-old_x), 0.1*(y-old_y))
+      radius = self.opengl.camera.scale
+      x_diff = 0.1*radius*(x_mouse - self.x_mouse_save)
+      y_diff = 0.1*radius*-(y_mouse - self.y_mouse_save)
+      self.opengl.camera.rotate_xy(x_diff, y_diff)
     if self.is_mouse_right_down:
-      old_r, old_theta = self.get_polar(self.save_mouse_x, self.save_mouse_y)
-      r, theta = self.get_polar(x1, y1) 
-      new_scale = exp((r-old_r)*.01)
-      self.camera.rescale(new_scale)
-      self.camera.rotate_z(theta - old_theta)
-    self.save_mouse_x, self.save_mouse_y = x1, y1
-    glutPostRedisplay()
+      r_save, theta_save = self.get_polar(self.x_mouse_save, self.y_mouse_save)
+      r, theta = self.get_polar(x_mouse, y_mouse) 
+      self.opengl.camera.rescale(exp(0.01*(r-r_save)))
+      self.opengl.camera.rotate_z(theta - theta_save)
+    self.x_mouse_save, self.y_mouse_save = x_mouse, y_mouse
+    glut.glutPostRedisplay()
 
   def idle(self):
     now = time.time()
@@ -690,25 +699,25 @@ class PyBall:
     if self.n_step_animate > 0:
       n_step = min(int(elapsed/time_step), self.n_step_animate)
       if n_step > 0:
-        diff_center = self.new_camera.center - self.camera.center
+        diff_center = self.opengl.new_camera.center - self.opengl.camera.center
         fraction = n_step/float(self.n_step_animate)
         self.n_step_animate -= n_step
-        self.camera.center += fraction*diff_center
-        self.display()
+        self.opengl.camera.center += fraction*diff_center
+        self.draw_to_screen()
         self.last = now
     else:
       self.last = now
 
   def set_callbacks(self):
-    glutIdleFunc(self.idle)
-    glutReshapeFunc(self.reshape)
-    glutDisplayFunc(self.display)
-    glutKeyboardFunc(self.keyboard)
-    glutMouseFunc(self.mouse)
-    glutMotionFunc(self.motion)
+    glut.glutIdleFunc(self.idle)
+    glut.glutReshapeFunc(self.reshape)
+    glut.glutDisplayFunc(self.draw_to_screen)
+    glut.glutKeyboardFunc(self.keyboard)
+    glut.glutMouseFunc(self.mouse)
+    glut.glutMotionFunc(self.motion)
 
   def run(self):
-    return glutMainLoop()
+    return glut.glutMainLoop()
 
 
 if __name__ == "__main__":

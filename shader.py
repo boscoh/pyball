@@ -5,19 +5,15 @@
 Shader objects
 """
 
-from ctypes import sizeof, c_float, c_void_p, c_uint, string_at
-from OpenGL.GLUT import *
-from OpenGL.GL import *
-
+from OpenGL import GL as gl
 
 
 vertex_shader_source = b"""
-
 uniform mat4 modelview_matrix;
 uniform mat4 texture_matrix;
 uniform mat3 normal_matrix;
 
-uniform bool lighting;
+uniform bool is_lighting;
 uniform vec4 light_position;
 
 attribute vec3 vertex;
@@ -29,43 +25,44 @@ varying vec3 N, L, S;
 void main() {
   gl_Position = modelview_matrix * vec4(vertex, 1.);
   
-  if (lighting) {
+  if (is_lighting) {
     N = normalize(normal_matrix*normal);
     L = normalize(light_position.xyz);
     S = normalize(L+vec3(0, 0, 1));
   }
   gl_FrontColor = vec4(color, 1.);
 }
-
 """
 
-
-
 fragment_shader_source = b"""
-
 const vec4 acs = vec4(.2, .2, .2, 1.); // ambient color of scene
 const vec4 di0 = vec4(1., 1., 1., 1.); // diffuse intensity of light 0
-const vec4 white = vec4(1., 1., 1., 1.);
-const float shininess = 100.;
-const float alpha_threshold = .9;
 
-uniform bool lighting;
+uniform bool is_lighting;
+uniform bool is_fog;
+uniform float fog_near;
+uniform float fog_far;
 
 varying vec3 N, L, S;
 
 void main() {
   vec4 color = gl_Color;
-  if (lighting) {
+  if (is_lighting) {
     vec4 ambient = color * acs;
     vec4 diffuse = color * di0;
-    vec4 specular = white;
     float d = max(0., dot(N, L));
-    float s = pow(max(0., dot(N, S)), shininess);
-    color = clamp(ambient + diffuse * d + specular * s, 0., 1.);
+    color = clamp(ambient + diffuse * d, 0., 1.);
   }
-  gl_FragColor = color;
-}
 
+  gl_FragColor = color;
+
+  if (is_fog) {
+    float depth = gl_FragCoord.z / gl_FragCoord.w;
+    float fog_factor = smoothstep(fog_near, fog_far, depth);
+    gl_FragColor = mix(
+        gl_FragColor, vec4(vec3(0, 0, 0), gl_FragColor.w), fog_factor);
+  }
+}
 """
 
 
@@ -117,67 +114,75 @@ class Shader():
       self, vertex_shader, fragment_shader,
       vertex_attribs, uniforms):
 
-    self.program = glCreateProgram()
+    self.program = gl.glCreateProgram()
 
-    glAttachShader(
+    gl.glAttachShader(
        self.program,
-       self.compile(GL_VERTEX_SHADER, vertex_shader))
-    glAttachShader(
+       self.compile(gl.GL_VERTEX_SHADER, vertex_shader))
+    gl.glAttachShader(
       self.program,
-      self.compile(GL_FRAGMENT_SHADER, fragment_shader))
+      self.compile(gl.GL_FRAGMENT_SHADER, fragment_shader))
 
     self.locations = {}
 
     # before linking, link names of vertex attribs
     for i, vertex_attrib in enumerate(vertex_attribs):
       self.locations[vertex_attrib] = i
-      glBindAttribLocation(self.program, i, vertex_attrib)
+      gl.glBindAttribLocation(self.program, i, vertex_attrib)
 
-    glLinkProgram(self.program)
-    if glGetProgramiv(self.program, GL_LINK_STATUS) != GL_TRUE:
-      raise RuntimeError(glGetProgramInfoLog(self.program))
+    gl.glLinkProgram(self.program)
+    if gl.glGetProgramiv(self.program, gl.GL_LINK_STATUS) != gl.GL_TRUE:
+      raise RuntimeError(gl.glGetProgramInfoLog(self.program))
 
     # after linking, link names of uniforms
     for uniform in uniforms:
-       i = glGetUniformLocation(self.program, uniform)
+       i = gl.glGetUniformLocation(self.program, uniform)
        self.locations[uniform] = i
 
   def compile(self, shader_type, source):
-    shader = glCreateShader(shader_type)
-    glShaderSource(shader, source)
-    glCompileShader(shader)
-    if glGetShaderiv(shader, GL_COMPILE_STATUS) != GL_TRUE:
-      raise RuntimeError(glGetShaderInfoLog(shader))
+    shader = gl.glCreateShader(shader_type)
+    gl.glShaderSource(shader, source)
+    gl.glCompileShader(shader)
+    if gl.glGetShaderiv(shader, gl.GL_COMPILE_STATUS) != gl.GL_TRUE:
+      raise RuntimeError(gl.glGetShaderInfoLog(shader))
     return shader
 
   def set_boolean(self, var_name, is_state):
     if is_state:
-      glUniform1i(self.locations[var_name], 1)
+      gl.glUniform1i(self.locations[var_name], 1)
     else:
-      glUniform1i(self.locations[var_name], 0)
+      gl.glUniform1i(self.locations[var_name], 0)
 
   def set_matrix33(self, var_name, cfloat9):
-    glUniformMatrix3fv(
+    gl.glUniformMatrix3fv(
         self.locations[var_name], 
         1, # number of matrices
-        GL_FALSE, # transpose
+        gl.GL_FALSE, # transpose
         cfloat9)
 
   def set_matrix44(self, var_name, cfloat16):
-    glUniformMatrix4fv(
+    gl.glUniformMatrix4fv(
         self.locations[var_name], 
         1, # number of matrices
-        GL_FALSE, # transpose
+        gl.GL_FALSE, # transpose
         cfloat16)
 
   def set_vec4(self, var_name, c_float_4):
-    glUniform4f(self.locations[var_name], *c_float_4)
+    gl.glUniform4f(self.locations[var_name], *c_float_4)
+
+  def set_float(self, var_name, c_float):
+    gl.glUniform1f(
+        self.locations[var_name],
+        c_float)
 
   def bind_camera(self, camera):
     self.set_matrix44("modelview_matrix", camera.modelview_cfloat16())
     self.set_matrix33("normal_matrix", camera.normal_cfloat9())
-    self.set_boolean('lighting', camera.is_lighting)
+    self.set_boolean('is_lighting', camera.is_lighting)
+    self.set_boolean('is_fog', camera.is_fog)
     self.set_vec4('light_position', camera.light_position)
+    self.set_float('fog_near', camera.fog_near)
+    self.set_float('fog_far', camera.fog_far)
 
 
 
@@ -192,8 +197,11 @@ class ShaderCatalog:
     uniforms = [
       "modelview_matrix", 
       "normal_matrix", 
-      "lighting", 
+      "is_lighting", 
       "light_position", 
+      "fog_near",
+      "fog_far",
+      "is_fog",
     ]
     self.catalog = {
       'default': 

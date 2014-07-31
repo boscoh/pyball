@@ -6,13 +6,11 @@ polygon triangle strips to form meshes for OpenGL display.
 """
 
 import math
+from ctypes import sizeof, c_float, c_void_p, c_uint
 
-from ctypes import sizeof, c_float, c_void_p, c_uint, string_at
+from pdbremix import v3numpy as v3
 
-from OpenGL.GL import *
-
-from pdbremix import pdbatoms
-from pdbremix import v3
+from OpenGL import GL as gl
 
 
 
@@ -67,34 +65,34 @@ class IndexedVertexBuffer:
     self.i_vertex_in_buffer += 1
 
   def bind_to_draw_context(self):
-    glBindBuffer(GL_ARRAY_BUFFER, glGenBuffers(1))
-    glBufferData(GL_ARRAY_BUFFER, self.vertex_buffer, GL_STATIC_DRAW)
+    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, gl.glGenBuffers(1))
+    gl.glBufferData(gl.GL_ARRAY_BUFFER, self.vertex_buffer, gl.GL_STATIC_DRAW)
 
     for attrib in self.vertex_attribs:
       i = self.shader.locations[attrib]
-      glEnableVertexAttribArray(i)
+      gl.glEnableVertexAttribArray(i)
       offset = self.offsets[attrib] * sizeof(c_float)
-      glVertexAttribPointer(
-          i, self.n_floats[attrib], GL_FLOAT, False, 
+      gl.glVertexAttribPointer(
+          i, self.n_floats[attrib], gl.GL_FLOAT, False, 
           self.size_vertex, c_void_p(offset))
 
     if self.index_buffer is None:
       self.index_buffer = (c_uint*len(self.indices))(*self.indices)
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, glGenBuffers(1))
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, self.index_buffer, GL_STATIC_DRAW)
+    gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, gl.glGenBuffers(1))
+    gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, self.index_buffer, gl.GL_STATIC_DRAW)
 
   def release_from_draw_context(self):
     for attrib in self.vertex_attribs:
-      glDisableVertexAttribArray(self.shader.locations[attrib])
+      gl.glDisableVertexAttribArray(self.shader.locations[attrib])
 
   def draw_triangle_strips(self):
     offset_strip = 0
     for size_strip in self.size_strip_list:
-      glDrawElements(
-          GL_TRIANGLE_STRIP,
+      gl.glDrawElements(
+          gl.GL_TRIANGLE_STRIP,
           size_strip, 
-          GL_UNSIGNED_INT,
+          gl.GL_UNSIGNED_INT,
           c_void_p(offset_strip))
       offset_strip += size_strip*sizeof(c_uint)
   
