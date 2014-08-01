@@ -99,7 +99,7 @@ class Camera:
       projection = v3.combine(
           projection, v3.scaling_matrix(1.5, 1.5, 1.5))
     else:
-      projection = ortho(-w, w, -h, h, -2, 2)
+      projection = self.ortho()
     modelview = v3.combine(projection, modelview)
 
     return matrix_to_c_floats(modelview, 4)

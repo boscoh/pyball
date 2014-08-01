@@ -604,8 +604,11 @@ class PyBall:
 
     self.n_step_animate = 0
 
+    print "Build cylindrical trace..."
     self.cylinder_draw_object = make_cylinder_trace_mesh(self.rendered_soup, 6, 5, 10)
+    print "Build ribbons..."
     self.ribbon_draw_object = make_carton_mesh(self.rendered_soup)
+    print "Build ball and sticks..."
     self.ball_stick_draw_object = make_ball_and_stick_mesh(self.rendered_soup)
     self.is_stick = False
     self.opengl.draw_objects.append(self.ribbon_draw_object)
@@ -635,11 +638,11 @@ class PyBall:
   def keyboard(self, c, x=0, y=0):
     """keyboard callback."""
     if c == b'p':
-      is_perspective = not self.camera.is_perspective
+      is_perspective = not self.opengl.camera.is_perspective
       self.opengl.camera.is_perspective = is_perspective
-      self.reshape(glut.glutGet(glut.GLUT_WINDOW_WIDTH), glut.glutGet(glut.GLUT_WINDOW_HEIGHT))
+      self.reshape(*self.get_window_dims())
     elif c == b'l':
-      is_lighting = not self.camera.is_lighting
+      is_lighting = not self.opengl.camera.is_lighting
       self.opengl.camera.is_lighting = is_lighting
     elif c == b'q':
       sys.exit(0)
