@@ -177,15 +177,9 @@ class TubeRender():
     for i_point in range(n_point-1):
       i_slice_offset = i_point*n_arc
       j_slice_offset = (i_point+1)*n_arc
-      for i_arc in range(n_arc):
-        if i_arc < n_arc-1:
-          j_arc = i_arc + 1
-        else:
-          j_arc = 0
-        indices.append(i_slice_offset + i_arc)
-        indices.append(j_slice_offset + i_arc)
-        indices.append(i_slice_offset + j_arc)
-        indices.append(j_slice_offset + j_arc)
+      for i_arc in range(n_arc+1):
+        indices.append(i_slice_offset + i_arc % n_arc)
+        indices.append(j_slice_offset + i_arc % n_arc)
 
     vertex_buffer.setup_next_strip(indices)
 
@@ -209,33 +203,34 @@ class ArrowShape():
   def __init__(self, w=0.6):
     arrow_face_in_zx = [
       v3.vector(0, 0, 2),
+      v3.vector(0, -0.8, -2),
       v3.vector(0, 0.8, -2),
-      v3.vector(0, -0.8, -2)]
+      ]
 
     i = 0
     self.points = []
     self.faces = []
-    n_point_in_arrow_face = len(arrow_face_in_zx)
+    n_arc = len(arrow_face_in_zx)
     points = [p + v3.vector(0.5, 0, 0) for p in arrow_face_in_zx]
     points = [p*w for p in points]
     self.points.extend(points)
     face = [i + j for j in range(len(points))] 
     self.faces.append(list(reversed(face)))
-    i += n_point_in_arrow_face
+    i += n_arc
 
     points = [p + v3.vector(-0.5, 0, 0) for p in arrow_face_in_zx]
     points = [p*w for p in points]
     self.points.extend(points)
     face = [i + j for j in range(len(points))] 
     self.faces.append(face)
-    i += n_point_in_arrow_face
+    i += n_arc
 
-    for j in range(n_point_in_arrow_face):
-      if j == n_point_in_arrow_face-1:
-        k = 0
-      else:
-        k = j+1
-      face = [k, k+n_point_in_arrow_face, j, j+n_point_in_arrow_face]
+    for i in range(n_arc):
+      face = [
+        i % n_arc,
+        (i+1) % n_arc,
+        i % n_arc + n_arc,
+        (i+1) % n_arc + n_arc]
       self.faces.append(face)
 
     self.n_vertex = sum(len(f) for f in self.faces)
@@ -243,13 +238,13 @@ class ArrowShape():
   def render_to_center(
       self, vertex_buffer, center, tangent, up, scale, color, objid):
     m = get_xy_face_transform(tangent, up, scale)
-    for indexes in self.faces:
-      n_vertex = len(indexes)
+    for face in self.faces:
+      n_vertex = len(face)
       vertex_buffer.setup_next_strip(range(n_vertex))
-      p0, p1, p2 = [self.points[i] for i in indexes[:3]]
+      p0, p1, p2 = [self.points[i] for i in reversed(face[:3])]
       normal = v3.transform(m, v3.cross(p0 - p1, p0 - p2))
-      for index in indexes:
-        vertex = v3.transform(m, self.points[index]) + center
+      for i in face:
+        vertex = v3.transform(m, self.points[i]) + center
         vertex_buffer.add_vertex(vertex, normal, color, objid)
 
 
@@ -260,24 +255,19 @@ class SphereShape:
     self.indices = []
     self.points = []
     vert_angle = math.pi / (n_stack - 1);
-    horz_angle = math.pi * 2.0 / n_arc
-    for i in range(n_stack):
-      radius = math.sin(i * vert_angle);
-      z = scale * math.cos(i * vert_angle);
-      for j in range(n_arc):
-        x = scale * radius * math.cos(j * horz_angle);
-        y = scale * radius * math.sin(j * horz_angle);
-        offset = 3 * (j + i * n_arc)
+    arc_angle = math.pi * 2.0 / n_arc
+    for i_stack in range(n_stack):
+      radius = math.sin(i_stack * vert_angle);
+      z = -scale * math.cos(i_stack * vert_angle);
+      for i_arc in range(n_arc):
+        x = scale * radius * math.cos(i_arc * arc_angle);
+        y = scale * radius * math.sin(i_arc * arc_angle);
         self.points.append(v3.vector(x,y,z))
-    for i in range(n_stack-1):
-      for j in range(n_arc):
+    for i_stack in range(n_stack-1):
+      for i_arc in range(n_arc+1):
         self.indices.extend([
-          (i) * n_arc + j,
-          (i) * n_arc + ((j + 1) % n_arc),
-          (i + 1) * n_arc + j,
-          (i) * n_arc + ((j + 1) % n_arc),
-          (i + 1) * n_arc + ((j + 1) % n_arc),
-          (i + 1) * n_arc + j])
+          (i_stack) * n_arc     + i_arc,
+          (i_stack+1) * n_arc   + i_arc])
     self.n_vertex = n_stack*n_arc
 
   def render_to_center(
@@ -295,23 +285,15 @@ class CylinderShape:
     self.points = []
     self.normals = []
     self.indices = []
-    horz_angle = math.pi * 2.0 / n_arc
-    for z in [0, 1.0]:
+    arc_angle = math.pi * 2.0 / n_arc
+    for z in [0.0, 1.0]:
       for j in range(n_arc):
-        x = radius * math.cos(j * horz_angle)
-        y = radius * math.sin(j * horz_angle)
+        x = radius * math.cos(j * arc_angle)
+        y = radius * math.sin(j * arc_angle)
         self.normals.append(v3.vector(x, y, 0.0))
         self.points.append(v3.vector(x, y, z))
-    for i in range(n_arc):
-      if i == n_arc-1:
-        j = 0
-      else:
-        j = i + 1
-      self.indices.extend([
-        i,
-        j,
-        i+n_arc,
-        j+n_arc])
+    for i in range(n_arc+1):
+      self.indices.extend([i, n_arc + i])
     self.n_vertex = 2*n_arc
 
   def render_to_center(

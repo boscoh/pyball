@@ -40,6 +40,7 @@ class Camera:
     self.outline_color = [1., 1., 1.]
     self.half_width = 1.
     self.half_height = 1.
+    self.zoom = 12
 
   def rotate_xy(self, rad_around_x, rad_around_y):
     rot_along_x = v3.rotation(v3.vector(0, 1, 0), rad_around_x)
@@ -53,7 +54,10 @@ class Camera:
 
   def rescale(self, new_scale):
     self.scale *= new_scale 
-    
+  
+  def change_zoom(self, zoom):
+    self.zoom += zoom
+
   def set_screen(self, width, height):
     self.half_width = width
     self.half_height = height
@@ -74,7 +78,7 @@ class Camera:
 
   def ortho(self):
     w, h = self.half_width, self.half_height
-    l, r, b, t, n, f = -w, w, -h, h, -2, 2 
+    l, r, b, t, n, f = -w, w, -h, h, -8, 8 
     m = v3.identity()
     w, h, d = r-l, t-b, f-n
     m[0,:] = [2./w, 0.,    0.,   -(r+l)/w]
@@ -95,7 +99,7 @@ class Camera:
 
     if self.is_perspective:
       projection = v3.combine(
-          self.frustum(), v3.translation(v3.vector(0, 0, -12)))
+          self.frustum(), v3.translation(v3.vector(0, 0, -self.zoom)))
       projection = v3.combine(
           projection, v3.scaling_matrix(1.5, 1.5, 1.5))
     else:

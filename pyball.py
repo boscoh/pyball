@@ -268,7 +268,6 @@ class RenderedSoup():
         bond.tangent = atom2.pos - atom1.pos
         bond.up = v3.cross(atom1.pos, bond.tangent)
         self.bonds.append(bond)
-    print "Bonds found."
 
 
 def spline(t, p1, p2, p3, p4):
@@ -485,7 +484,7 @@ class BallAndStickRenderer():
           point,
           point,
           point,
-          0.02,
+          0.2,
           color,
           objid)
     for i, bond in enumerate(self.trace.bonds):
@@ -527,6 +526,7 @@ class OpenGlHandler():
     self.shader = self.shader_catalog.shader
     self.draw_objects = []
     self.bg_rgb = (0.0, 0.0, 0.0, 0.0)
+    self.is_outline = False
 
   def draw_objects_with_shader(self, shader_type):
     self.shader = self.shader_catalog.catalog[shader_type]
@@ -539,16 +539,17 @@ class OpenGlHandler():
     bg_color = self.camera.fog_color + [1.]
     gl.glClearColor(*bg_color)
     gl.glClear(gl.GL_COLOR_BUFFER_BIT|gl.GL_DEPTH_BUFFER_BIT)
-    gl.glEnable(gl.GL_DEPTH_TEST)
-    gl.glDisable(gl.GL_BLEND)
-    gl.glCullFace(gl.GL_BACK);
-    gl.glEnable(gl.GL_CULL_FACE);
-    # self.draw_objects_with_shader('outline')
     gl.glEnable(gl.GL_BLEND)
+    gl.glEnable(gl.GL_DEPTH_TEST)
+    gl.glDepthFunc(gl.GL_LEQUAL)
+
+    if self.is_outline:
+      gl.glCullFace(gl.GL_BACK);
+      gl.glEnable(gl.GL_CULL_FACE);
+      self.draw_objects_with_shader('outline')
+
     gl.glCullFace(gl.GL_FRONT)
     gl.glEnable(gl.GL_CULL_FACE)
-    gl.glDisable(gl.GL_CULL_FACE)
-    gl.glDepthFunc(gl.GL_LEQUAL)
     self.draw_objects_with_shader('default')
 
   def pick(self, x, y):
@@ -604,11 +605,11 @@ class PyBall:
 
     self.n_step_animate = 0
 
-    print "Build cylindrical trace..."
+    print "Building cylindrical trace..."
     self.cylinder_draw_object = make_cylinder_trace_mesh(self.rendered_soup, 6, 5, 10)
-    print "Build ribbons..."
+    print "Building ribbons..."
     self.ribbon_draw_object = make_carton_mesh(self.rendered_soup)
-    print "Build ball and sticks..."
+    print "Building ball and sticks..."
     self.ball_stick_draw_object = make_ball_and_stick_mesh(self.rendered_soup)
     self.is_stick = False
     self.opengl.draw_objects.append(self.ribbon_draw_object)
@@ -638,20 +639,20 @@ class PyBall:
   def keyboard(self, c, x=0, y=0):
     """keyboard callback."""
     if c == b'p':
-      is_perspective = not self.opengl.camera.is_perspective
-      self.opengl.camera.is_perspective = is_perspective
+      self.opengl.camera.is_perspective = not self.opengl.camera.is_perspective
       self.reshape(*self.get_window_dims())
     elif c == b'l':
-      is_lighting = not self.opengl.camera.is_lighting
-      self.opengl.camera.is_lighting = is_lighting
-    elif c == b'q':
-      sys.exit(0)
+      self.opengl.camera.is_lighting = not self.opengl.camera.is_lighting
+    elif c == b'o':
+      self.opengl.is_outline = not self.opengl.is_outline
     elif c == b's':
       self.is_stick = not self.is_stick
       self.opengl.draw_objects = []
       self.opengl.draw_objects.append(self.ribbon_draw_object)
       if self.is_stick:
         self.opengl.draw_objects.append(self.ball_stick_draw_object)
+    elif c == b'q':
+      sys.exit(0)
     glut.glutPostRedisplay()
 
   def mouse(self, button, state, x, y):
@@ -699,6 +700,7 @@ class PyBall:
       r_save, theta_save = self.get_polar(self.x_mouse_save, self.y_mouse_save)
       r, theta = self.get_polar(x_mouse, y_mouse) 
       self.opengl.camera.rescale(exp(0.01*(r-r_save)))
+      # self.opengl.camera.change_zoom(-0.1*(r-r_save))
       self.opengl.camera.rotate_z(theta - theta_save)
     self.x_mouse_save, self.y_mouse_save = x_mouse, y_mouse
     glut.glutPostRedisplay()
