@@ -32,8 +32,8 @@ class Camera:
     self.scale = 1.
     self.is_perspective = True
     self.is_lighting = True
-    self.fog_near = -3
-    self.fog_far = 20
+    self.fog_near = 8
+    self.fog_far = 16
     self.is_fog = True
     self.light_position = [100., 100., 500., 0.]
     self.fog_color = [0, 0, 0]
@@ -41,6 +41,7 @@ class Camera:
     self.half_width = 1.
     self.half_height = 1.
     self.zoom = 12
+    self.outline_width = 0.4
 
   def rotate_xy(self, rad_around_x, rad_around_y):
     rot_along_x = v3.rotation(v3.vector(0, 1, 0), rad_around_x)
@@ -54,6 +55,7 @@ class Camera:
 
   def rescale(self, new_scale):
     self.scale *= new_scale 
+    self.outline_width *= new_scale
   
   def change_zoom(self, zoom):
     self.zoom += zoom
@@ -100,8 +102,8 @@ class Camera:
     if self.is_perspective:
       projection = v3.combine(
           self.frustum(), v3.translation(v3.vector(0, 0, -self.zoom)))
-      projection = v3.combine(
-          projection, v3.scaling_matrix(1.5, 1.5, 1.5))
+      # projection = v3.combine(
+      #     projection, v3.scaling_matrix(1.5, 1.5, 1.5))
     else:
       projection = self.ortho()
     modelview = v3.combine(projection, modelview)

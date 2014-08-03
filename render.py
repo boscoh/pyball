@@ -124,7 +124,7 @@ class CircleProfile():
   def __init__(self, n_arc=10):
     self.n_arc = n_arc
     tangent = v3.vector(0, 0, 1)
-    rotator = v3.vector(0, 0.2, 0)
+    rotator = v3.vector(0, 0.4, 0)
     self.arcs = []
     angle = v3.radians(360/n_arc)
     rotation = v3.rotation(tangent, angle)
@@ -138,9 +138,9 @@ class CircleProfile():
 class RectProfile():
   def __init__(self):
     tangent = v3.vector(0, 0, 1)
-    up = v3.vector(0, 1.2, 0)
+    up = v3.vector(0, 1.5, 0)
     right = v3.cross(up, tangent)
-    right = 0.1*right
+    right = 0.2*right
     self.arcs = [
         right + up,
               + up,
@@ -211,14 +211,14 @@ class ArrowShape():
     self.points = []
     self.faces = []
     n_arc = len(arrow_face_in_zx)
-    points = [p + v3.vector(0.5, 0, 0) for p in arrow_face_in_zx]
+    points = [p + v3.vector(1.0, 0, 0) for p in arrow_face_in_zx]
     points = [p*w for p in points]
     self.points.extend(points)
     face = [i + j for j in range(len(points))] 
     self.faces.append(list(reversed(face)))
     i += n_arc
 
-    points = [p + v3.vector(-0.5, 0, 0) for p in arrow_face_in_zx]
+    points = [p + v3.vector(-1.0, 0, 0) for p in arrow_face_in_zx]
     points = [p*w for p in points]
     self.points.extend(points)
     face = [i + j for j in range(len(points))] 
@@ -293,7 +293,7 @@ class CylinderShape:
         self.normals.append(v3.vector(x, y, 0.0))
         self.points.append(v3.vector(x, y, z))
     for i in range(n_arc+1):
-      self.indices.extend([i, n_arc + i])
+      self.indices.extend([i%n_arc, n_arc + i%n_arc])
     self.n_vertex = 2*n_arc
 
   def render_to_center(

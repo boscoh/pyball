@@ -264,6 +264,9 @@ class RenderedSoup():
       if atom1.element == 'H' or atom2.element == 'H':
         continue
       if v3.distance(atom1.pos, atom2.pos) < d:
+        if atom1.alt_conform != " " and atom2.alt_conform != " ":
+          if atom1.alt_conform != atom2.alt_conform:
+            continue
         bond = Bond(atom1, atom2)
         bond.tangent = atom2.pos - atom1.pos
         bond.up = v3.cross(atom1.pos, bond.tangent)
@@ -484,7 +487,7 @@ class BallAndStickRenderer():
           point,
           point,
           point,
-          0.2,
+          0.02,
           color,
           objid)
     for i, bond in enumerate(self.trace.bonds):
@@ -645,6 +648,8 @@ class PyBall:
       self.opengl.camera.is_lighting = not self.opengl.camera.is_lighting
     elif c == b'o':
       self.opengl.is_outline = not self.opengl.is_outline
+    elif c == b'f':
+      self.opengl.camera.is_fog = not self.opengl.camera.is_fog
     elif c == b's':
       self.is_stick = not self.is_stick
       self.opengl.draw_objects = []

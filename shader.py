@@ -115,13 +115,14 @@ attribute vec3 color;
                                                                        
 uniform mat4 modelview_matrix;
 uniform mat3 normal_matrix;
+uniform float outline_width;
 
 varying vec3 N;
 
 void main(void) {
   gl_Position = modelview_matrix * vec4(vertex, 1.0);
-  N = normalize(normal_matrix * normal);
-  gl_Position.xy += N.xy*0.100;
+  N = normal_matrix * normalize(normal);
+  gl_Position.xy += N.xy*outline_width;
 }
 """
 
@@ -232,6 +233,7 @@ class Shader():
     self.set_float('fog_far', camera.fog_far)
     self.set_vec3('fog_color', camera.fog_color)
     self.set_vec3('outline_color', camera.outline_color)
+    self.set_float('outline_width', camera.outline_width)
 
 
 
@@ -253,6 +255,7 @@ class ShaderCatalog:
       "is_fog",
       "fog_color",
       "outline_color",
+      "outline_width",
     ]
     self.catalog = {
       'default': 
