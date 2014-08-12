@@ -329,7 +329,7 @@ class RenderedSoup():
 
 def make_carton_mesh(
     rendered_soup, coil_detail=5, spline_detail=3, 
-    width=1.6, thickness=0.3):
+    width=1.6, thickness=0.2):
 
   # extrusion cross sections
   rect = render.RectProfile(width, thickness)
@@ -346,7 +346,7 @@ def make_carton_mesh(
 
       ss = piece.residues[i_residue].ss
       color = piece.residues[i_residue].color
-      color = [min(1.0, 1.8*c) for c in color]
+      color = [min(1.0, 1.6*c) for c in color]
       profile = circle if ss == "C" else rect  
 
       while j_residue < n_residue and piece.residues[j_residue].ss == ss:
@@ -380,7 +380,7 @@ def make_carton_mesh(
 
 
 def make_arrow_mesh(rendered_soup):
-  shape = render.ArrowShape(1.0, 0.5, 0.32)
+  shape = render.ArrowShape(0.6, 0.3, 0.24)
   n_point = 0
   for piece in rendered_soup.pieces:
     n_point += len(piece.points)

@@ -172,6 +172,7 @@ class TubeRender():
     n_point = len(self.trace.points)
     n_arc = len(self.profile.arcs)
 
+    # draw front face
     indices = [0, 1]
     for i_arc in range((n_arc-1)/2):
       j_arc = n_arc - i_arc - 1
@@ -187,11 +188,11 @@ class TubeRender():
         v3.transform(m, a) + self.trace.points[0] 
         for a in self.profile.arcs]
     normal = -self.trace.tangents[0]
-    normals = [normal for arc in arcs]
     for i_arc in range(n_arc):
       vertex_buffer.add_vertex(
-          arcs[i_arc], normals[i_arc], self.color, self.trace.objids[0])
+          arcs[i_arc], normal, self.color, self.trace.objids[0])
 
+    # draw extrusion in tube
     indices = []
     for i_point in range(n_point-1):
       i_slice_offset = i_point*n_arc
@@ -212,6 +213,7 @@ class TubeRender():
         vertex_buffer.add_vertex(
             arcs[i_arc], normals[i_arc], self.color, self.trace.objids[i])
 
+    # draw back face
     indices = [0, 1]
     for i_arc in range((n_arc-1)/2):
       j_arc = n_arc - i_arc - 1
@@ -228,10 +230,9 @@ class TubeRender():
         v3.transform(m, a) + self.trace.points[i_point] 
         for a in self.profile.arcs]
     normal = self.trace.tangents[i_point]
-    normals = [normal for arc in arcs]
-    for i_arc in range(n_arc):
+    for i_arc in reversed(range(n_arc)):
       vertex_buffer.add_vertex(
-          arcs[i_arc], normals[i_arc], self.color, self.trace.objids[i_point])
+          arcs[i_arc], normal, self.color, self.trace.objids[i_point])
 
 
 ##################################################
