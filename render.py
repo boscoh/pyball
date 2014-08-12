@@ -166,11 +166,31 @@ class TubeRender():
     self.color = color
     n_arc = len(self.profile.arcs)
     n_slice = len(self.trace.points)
-    self.n_vertex = n_arc*n_slice
+    self.n_vertex = n_arc*(n_slice + 2)
 
   def render_to_buffer(self, vertex_buffer):
     n_point = len(self.trace.points)
     n_arc = len(self.profile.arcs)
+
+    indices = [0, 1]
+    for i_arc in range((n_arc-1)/2):
+      j_arc = n_arc - i_arc - 1
+      indices.append(j_arc)
+      j_arc = 2 + i_arc
+      if j_arc <= n_arc/2:
+        indices.append(j_arc)
+    vertex_buffer.setup_next_strip(indices)
+
+    m = get_xy_face_transform(
+        self.trace.tangents[0], self.trace.ups[0], 1.0)
+    arcs = [
+        v3.transform(m, a) + self.trace.points[0] 
+        for a in self.profile.arcs]
+    normal = -self.trace.tangents[0]
+    normals = [normal for arc in arcs]
+    for i_arc in range(n_arc):
+      vertex_buffer.add_vertex(
+          arcs[i_arc], normals[i_arc], self.color, self.trace.objids[0])
 
     indices = []
     for i_point in range(n_point-1):
@@ -179,7 +199,6 @@ class TubeRender():
       for i_arc in range(n_arc+1):
         indices.append(i_slice_offset + i_arc % n_arc)
         indices.append(j_slice_offset + i_arc % n_arc)
-
     vertex_buffer.setup_next_strip(indices)
 
     for i in range(n_point):
@@ -189,10 +208,30 @@ class TubeRender():
           v3.transform(m, a) + self.trace.points[i] 
           for a in self.profile.arcs]
       normals = [v3.transform(m, n) for n in self.profile.normals]
-
       for i_arc in range(n_arc):
         vertex_buffer.add_vertex(
             arcs[i_arc], normals[i_arc], self.color, self.trace.objids[i])
+
+    indices = [0, 1]
+    for i_arc in range((n_arc-1)/2):
+      j_arc = n_arc - i_arc - 1
+      indices.append(j_arc)
+      j_arc = 2 + i_arc
+      if j_arc <= n_arc/2:
+        indices.append(j_arc)
+    vertex_buffer.setup_next_strip(indices)
+
+    i_point = n_point - 1
+    m = get_xy_face_transform(
+        self.trace.tangents[i_point], self.trace.ups[i_point], 1.0)
+    arcs = [
+        v3.transform(m, a) + self.trace.points[i_point] 
+        for a in self.profile.arcs]
+    normal = self.trace.tangents[i_point]
+    normals = [normal for arc in arcs]
+    for i_arc in range(n_arc):
+      vertex_buffer.add_vertex(
+          arcs[i_arc], normals[i_arc], self.color, self.trace.objids[i_point])
 
 
 ##################################################

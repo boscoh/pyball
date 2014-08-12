@@ -328,7 +328,7 @@ class RenderedSoup():
 
 
 def make_carton_mesh(
-    trace, coil_detail=5, spline_detail=3, 
+    rendered_soup, coil_detail=5, spline_detail=3, 
     width=1.6, thickness=0.3):
 
   # extrusion cross sections
@@ -336,7 +336,7 @@ def make_carton_mesh(
   circle = render.CircleProfile(coil_detail, thickness)
 
   renderers = []
-  for piece in trace.pieces:
+  for piece in rendered_soup.pieces:
     spline = SplineTrace(piece, 2*spline_detail)
 
     n_residue = len(piece.points)
@@ -379,14 +379,14 @@ def make_carton_mesh(
   return vertex_buffer
 
 
-def make_arrow_mesh(trace):
+def make_arrow_mesh(rendered_soup):
   shape = render.ArrowShape(1.0, 0.5, 0.32)
   n_point = 0
-  for piece in trace.pieces:
+  for piece in rendered_soup.pieces:
     n_point += len(piece.points)
   n_vertex = shape.n_vertex*n_point
   vertex_buffer = render.IndexedVertexBuffer(n_vertex)
-  for piece in trace.pieces:
+  for piece in rendered_soup.pieces:
     n_point = len(piece.points)
     for i in range(n_point):
       shape.render_to_center(
@@ -401,12 +401,12 @@ def make_arrow_mesh(trace):
 
 
 def make_cylinder_trace_mesh(
-    trace, coil_detail=4, spline_detail=6, sphere_detail=4):
+    rendered_soup, coil_detail=4, spline_detail=6, sphere_detail=4):
   cylinder = render.CylinderShape(coil_detail)
-  n_point = sum(len(piece.points) for piece in trace.pieces)
+  n_point = sum(len(piece.points) for piece in rendered_soup.pieces)
   n_vertex = cylinder.n_vertex * 2* n_point
   vertex_buffer = render.IndexedVertexBuffer(n_vertex)
-  for piece in trace.pieces:
+  for piece in rendered_soup.pieces:
     points = piece.points
     for i_segment in range(len(points) - 1):
       tangent = 0.5*(points[i_segment+1] - points[i_segment])
@@ -430,13 +430,13 @@ def make_cylinder_trace_mesh(
   return vertex_buffer
 
 
-def make_ball_and_stick_mesh(trace):
+def make_ball_and_stick_mesh(rendered_soup):
   sphere = render.SphereShape(5, 5)
   cylinder = render.CylinderShape(5)
-  n_vertex = len(trace.draw_to_screen_atoms)*sphere.n_vertex
-  n_vertex += len(trace.bonds)*cylinder.n_vertex
+  n_vertex = len(rendered_soup.draw_to_screen_atoms)*sphere.n_vertex
+  n_vertex += len(rendered_soup.bonds)*cylinder.n_vertex
   vertex_buffer = render.IndexedVertexBuffer(n_vertex)
-  for atom in trace.draw_to_screen_atoms:
+  for atom in rendered_soup.draw_to_screen_atoms:
     point = atom.pos
     objid = atom.res_objid
     color = atom.residue.color
@@ -448,7 +448,7 @@ def make_ball_and_stick_mesh(trace):
         0.2,
         color,
         objid)
-  for bond in trace.bonds:
+  for bond in rendered_soup.bonds:
     color = bond.atom1.residue.color
     objid = bond.atom1.res_objid
     cylinder.render_to_center(
