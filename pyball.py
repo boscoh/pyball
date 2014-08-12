@@ -44,57 +44,6 @@ from spacehash import SpaceHash
 # render functions to turn into polygon
 
 
-class PieceCalphaTrace:
-  def __init__(self):
-    self.points = []
-    self.ups = []
-    self.tangents = []
-    self.ss = []
-    self.objids = []
-
-
-class SsPieceCalphaTrace:
-  def __init__(self, parent, i, j, ss):
-    self.parent = parent
-    self.i = i
-    self.j = j
-    self.points = parent.points[i:j] 
-    self.objids = parent.objids[i:j] 
-    self.ups = parent.ups[i:j] 
-    self.tangents = parent.tangents[i:j]
-    self.ss = ss
-
-  def get_prev_point(self, i):
-    i_parent = self.i + i
-    if i_parent == 0:
-      prev_point = self.prev_point_save
-    else:
-      prev_point = self.parent.points[i_parent - 1]
-    return prev_point
-
-  def get_next_point(self, i):
-    i_parent = self.i + i
-    if i_parent == len(self.parent.points)-1:
-      next_point = self.next_point_save
-    else:
-      next_point = self.parent.points[i_parent + 1]
-    return next_point
-
-  def get_prev_up(self, i):
-    if i == 0 and self.i == 0:
-      prev_up = self.parent.ups[0]
-    else:
-      prev_up = self.parent.ups[self.i + i - 1]
-    return prev_up
-
-  def get_next_up(self, i):
-    if i == len(self.points)-1 and self.i + i == len(self.parent.points)-1:
-      next_up = self.parent.ups[i]
-    else:
-      next_up = self.parent.ups[self.i + i + 1]
-    return next_up
-
-
 next_objid = 1
 def get_next_objid():
   global next_objid
@@ -107,25 +56,134 @@ def atom_name(atom):
   return atom.res_tag() + '-' + atom.res_type  + '-' + atom.type
 
 
+class PieceCalphaTrace:
+  def __init__(self):
+    self.points = []
+    self.ups = []
+    self.tangents = []
+    self.objids = []
+
+  def get_prev_point(self, i):
+    if i > 0:
+      return self.points[i-1]
+    else:
+      return self.points[i] - self.tangents[i]
+
+  def get_next_point(self, i):
+    if i < len(self.points)-1:
+      return self.points[i+1]
+    else:
+      return self.points[i] + self.tangents[i]
+
+  def get_prev_up(self, i):
+    if i > 0:
+      return self.ups[i-1]
+    else:
+      return self.ups[i]
+
+  def get_next_up(self, i):
+    if i < len(self.points)-1:
+      return self.ups[i+1]
+    else:
+      return self.ups[i]
+
+
+def spline(t, p1, p2, p3, p4):
+  """
+  Returns a point at fraction t between p2 and p3 
+  using Catmull-Rom spline.
+  """
+  return \
+      0.5 * (   t*((2-t)*t    - 1)  * p1
+              + (t*t*(3*t - 5) + 2) * p2
+              + t*((4 - 3*t)*t + 1) * p3
+              + (t-1)*t*t           * p4 )
+
+
+class SplineTrace(PieceCalphaTrace):
+  """
+  A Spline Trace is used to draw ribbons and tubes.
+  It's essentially a collection of points, objids, tangents and ups.
+  """
+  def __init__(self, trace, n_division):
+    PieceCalphaTrace.__init__(self)
+
+    n_guide_point = len(trace.points)
+    delta = 1/float(n_division)
+
+    for i in range(n_guide_point-1):
+      n = n_division
+      j = i+1
+      if j == n_guide_point - 1:
+        n += 1
+      for k in range(n):
+        self.points.append(
+          spline(
+            k*delta, 
+            trace.get_prev_point(i), 
+            trace.points[i],
+            trace.points[j], 
+            trace.get_next_point(j)))
+        if k/float(n) < 0.5:
+          i_objid = i
+        else:
+          i_objid = i+1
+        self.objids.append(trace.objids[i_objid])
+
+    n_point = len(self.points)
+    for i in range(n_point):
+      if i == 0:
+        tangent = trace.tangents[0]
+      elif i == n_point-1:
+        tangent = trace.tangents[-1]
+      else:
+        tangent = self.points[i+1] - self.points[i-1]
+      self.tangents.append(tangent)
+
+    for i in range(n_guide_point-1):
+      if i == 0:
+        prev_up = trace.ups[0]
+      else:
+        prev_up = trace.ups[i-1]
+      if i == n_guide_point - 2:
+        next_up = trace.ups[-1]
+      else:
+        next_up = trace.ups[i+2]
+      n = n_division
+      if i == n_guide_point - 2:
+        n += 1
+      for k in range(n):
+        self.ups.append(
+          spline(
+             k*delta, 
+             trace.get_prev_up(i), 
+             trace.ups[i], 
+             trace.ups[i+1], 
+             trace.get_next_up(i)))
+
+
+class Bond():
+  def __init__(self, atom1, atom2):
+    self.atom1 = atom1
+    self.atom2 = atom2
+
+
 class RenderedSoup():
   def __init__(self, soup):
     self.soup = soup
     self.bonds = []
-
     self.points = []
     self.objids = []
     self.tops = []
-    self.ss = []
     self.pieces = []
     self.ss_pieces = []
     self.objid_ref = {}
-    self.connected_residues = []
+    self.residues = []
 
     self.build_objids()
     self.find_points()
     self.find_ss()
     self.find_pieces()
-    self.find_ss_pieces()
     self.find_bonds()
 
   def build_objids(self):
@@ -133,18 +191,34 @@ class RenderedSoup():
       objid = get_next_objid()
       self.objid_ref[objid] = atom
       atom.objid = objid
+      atom.res_objid = 0
+    for residue in self.soup.residues():
+      if residue.has_atom('CA'):
+        res_objid = residue.atom('CA').objid
+      else:
+        res_objid = residue.atoms()[0].objid
+      residue.ss = '-'
+      residue.color = [0.4, 1.0, 0.4]
+      residue.objid = res_objid
+      for atom in residue.atoms():
+        atom.res_objid = atom.objid
+        atom.residue = residue
 
   def find_points(self):
     for residue in self.soup.residues():
       if residue.has_atom('CA'):
-        self.connected_residues.append(residue)
+        self.residues.append(residue)
         atom = residue.atom('CA')
         self.points.append(atom.pos)
         self.tops.append(residue.atom('C').pos - residue.atom('O').pos)
         self.objids.append(atom.objid)
-        for atom in residue.atoms():
-          atom.res_objid = atom.objid
-          atom.residue = residue
+    # FIXIT: remove the alternate conformation not in residue
+    atoms = self.soup.atoms()
+    n = len(atoms)
+    for i in reversed(range(n)):
+      atom = atoms[i]
+      if not hasattr(atom, 'residue'):
+        del atoms[i]
     n_point = len(self.points)
     for i in range(1, n_point):
       if v3.dot(self.tops[i-1], self.tops[i]) < 0:
@@ -170,15 +244,22 @@ class RenderedSoup():
     helix_delta = 2.1
     sheet_distances = { 2:6.1, 3:10.4, 4:13.0 }
     sheet_delta = 1.42
-    self.ss = []
     for i in range(len(self.points)):
       if zhang_skolnick_test(i, helix_distances, helix_delta):
-        self.ss.append('H')
+        ss = 'H'
       elif zhang_skolnick_test(i, sheet_distances, sheet_delta):
-        self.ss.append('E')
+        ss = 'E'
       else:
-        self.ss.append('C')
-      self.connected_residues[i].ss = self.ss[-1]
+        ss = 'C'
+      self.residues[i].ss = ss
+
+    color_by_ss = {
+      'C': (0.5, 0.5, 0.5),
+      'H': (0.8, 0.4, 0.4),
+      'E': (0.4, 0.4, 0.8)
+    }
+    for residue in self.residues:
+      residue.color = color_by_ss[residue.ss]
 
   def find_pieces(self):
     self.pieces = []
@@ -191,14 +272,14 @@ class RenderedSoup():
         is_new_piece = True
       else:
         dist = v3.distance(self.points[j-1], self.points[j]) 
-        cutoff = 5
+        cutoff = 5.5
         if dist > cutoff:
           is_new_piece = True
       if is_new_piece:
         piece = PieceCalphaTrace()
         piece.points = self.points[i:j]
         piece.objids = self.objids[i:j]
-        piece.ss = self.ss[i:j]
+        piece.residues = self.residues[i:j]
         n_point_piece = len(piece.points)
         for k in range(n_point_piece):
           if k == 0:
@@ -223,33 +304,6 @@ class RenderedSoup():
         self.pieces.append(piece)
         i = j
 
-  def find_ss_pieces(self):
-    self.ss_pieces = []
-    for piece in self.pieces:
-      ss = piece.ss[0]
-      i = 0
-      n_point = len(piece.points)
-      for j in range(1, n_point+1):
-        is_new_piece = False
-        if j == n_point:
-          is_new_piece = True
-        elif piece.ss[j] != ss:
-          is_new_piece = True
-        if is_new_piece:
-          ss_piece = SsPieceCalphaTrace(piece, i, j, ss)
-          if i == 0:
-            ss_piece.prev_point_save = piece.points[i] - piece.tangents[i]
-          else:
-            ss_piece.prev_point_save = piece.points[i-1]
-          if j == n_point:
-            ss_piece.next_point_save = piece.points[j-1] - piece.tangents[j-1]
-          else:
-            ss_piece.next_point_save = piece.points[j]
-          self.ss_pieces.append(ss_piece)
-          if j < n_point:
-            ss = piece.ss[j]
-          i = j-1
-
   def find_bonds(self):
     self.draw_to_screen_atoms = self.soup.atoms()
     backbone_atoms.remove('CA')
@@ -273,251 +327,139 @@ class RenderedSoup():
         self.bonds.append(bond)
 
 
-def spline(t, p1, p2, p3, p4):
-  """
-  Returns a point at fraction t between p2 and p3 
-  using Catmull-Rom spline.
-  """
-  return \
-      0.5 * (   t*((2-t)*t    - 1)  * p1
-              + (t*t*(3*t - 5) + 2) * p2
-              + t*((4 - 3*t)*t + 1) * p3
-              + (t-1)*t*t           * p4 )
+def make_carton_mesh(
+    trace, coil_detail=5, spline_detail=3, 
+    width=1.6, thickness=0.3):
 
+  # extrusion cross sections
+  rect = render.RectProfile(width, thickness)
+  circle = render.CircleProfile(coil_detail, thickness)
 
-class SplineTrace():
-  """
-  A Spline Trace is used to draw ribbons and tubes.
-  It's essentially a collection of points, objids, tangents and ups.
-  """
-  def __init__(self, trace, n_division):
-    n_guide_point = len(trace.points)
-    delta = 1/float(n_division)
+  renderers = []
+  for piece in trace.pieces:
+    spline = SplineTrace(piece, 2*spline_detail)
 
-    self.points = []
-    self.objids = []
-    for i in range(n_guide_point-1):
-      n = n_division
-      j = i+1
-      if j == n_guide_point - 1:
-        n += 1
-      for k in range(n):
-        self.points.append(
-          spline(
-            k*delta, 
-            trace.get_prev_point(i), 
-            trace.points[i],
-            trace.points[j], 
-            trace.get_next_point(j)))
-        if k/float(n) < 0.5:
-          i_objid = i
-        else:
-          i_objid = i+1
-        self.objids.append(trace.objids[i_objid])
+    n_residue = len(piece.points)
+    i_residue = 0
+    j_residue = 1
+    while i_residue < n_residue:
 
-    self.tangents = []
-    n_point = len(self.points)
-    for i in range(n_point):
-      if i == 0:
-        tangent = trace.tangents[0]
-      elif i == n_point-1:
-        tangent = trace.tangents[-1]
-      else:
-        tangent = self.points[i+1] - self.points[i-1]
-      self.tangents.append(tangent)
+      ss = piece.residues[i_residue].ss
+      color = piece.residues[i_residue].color
+      color = [min(1.0, 1.8*c) for c in color]
+      profile = circle if ss == "C" else rect  
 
-    self.ups = []
-    for i in range(n_guide_point-1):
-      if i == 0:
-        prev_up = trace.ups[0]
-      else:
-        prev_up = trace.ups[i-1]
-      if i == n_guide_point - 2:
-        next_up = trace.ups[-1]
-      else:
-        next_up = trace.ups[i+2]
-      n = n_division
-      if i == n_guide_point - 2:
-        n += 1
-      for k in range(n):
-        self.ups.append(
-          spline(
-             k*delta, 
-             trace.get_prev_up(i), 
-             trace.ups[i], 
-             trace.ups[i+1], 
-             trace.get_next_up(i)))
+      while j_residue < n_residue and piece.residues[j_residue].ss == ss:
+        j_residue += 1
 
+      sub_spline = PieceCalphaTrace()
+      i_spline = i_residue * 2*spline_detail - spline_detail
+      if i_spline < 0:
+        i_spline = 0
+      j_spline = (j_residue-1) * 2*spline_detail + spline_detail + 1
+      if j_spline > len(spline.points) - 1:
+        j_spline = len(spline.points) - 1
+      sub_spline.points = spline.points[i_spline:j_spline] 
+      sub_spline.objids = spline.objids[i_spline:j_spline] 
+      sub_spline.ups = spline.ups[i_spline:j_spline] 
+      sub_spline.tangents = spline.tangents[i_spline:j_spline]
 
-class RibbonTraceRenderer():
-  def __init__(self, trace, coil_detail=4, spline_detail=6):
-    self.trace = trace
-    rect = render.RectProfile()
-    circle = render.CircleProfile(coil_detail)
-    color_by_ss = {
-      'C': (0.8, 0.8, 0.8),
-      'H': (1.0, 0.6, 0.6),
-      'E': (0.6, 0.6, 1.0)
-    }
-    self.piece_renderers = []
-    for piece in trace.ss_pieces:
-      profile = circle if piece.ss == "C" else rect
-      color = color_by_ss[piece.ss]
-      trace_piece = SplineTrace(piece, spline_detail)
-      self.piece_renderers.append(
-          render.TubeRender(trace_piece, profile, color))
-    
-    self.n_vertex = sum(p.n_vertex for p in self.piece_renderers)
+      renderers.append(
+          render.TubeRender(sub_spline, profile, color))
 
-  def render_to_buffer(self, vertex_buffer):
-    for r in self.piece_renderers:
+      i_residue = j_residue
+      j_residue = i_residue + 1
+
+  n_vertex = sum(r.n_vertex for r in renderers)
+  vertex_buffer = render.IndexedVertexBuffer(n_vertex)
+
+  for r in renderers:
       r.render_to_buffer(vertex_buffer)
 
-
-class ShapeTraceRenderer():
-  def __init__(self, trace, shape):
-    self.trace = trace
-    self.shape = shape
-    n_point = 0
-    for piece in self.trace.ss_pieces:
-      n_point += len(piece.points)
-    self.n_vertex = shape.n_vertex*n_point
-
-  def render_to_buffer(self, vertex_buffer):
-    color_by_ss = {
-      'C': (0.5, 0.5, 0.5),
-      'H': (1.0, 0.4, 0.4),
-      'E': (0.4, 0.4, 1.0)
-    }
-    for piece in self.trace.ss_pieces:
-      n_point = len(piece.points)
-      color = color_by_ss[piece.ss]
-      for i in range(n_point):
-        self.shape.render_to_center(
-            vertex_buffer,
-            piece.points[i], 
-            piece.tangents[i],
-            piece.ups[i],
-            1.0,
-            color,
-            piece.objids[i])
-
-
-def make_carton_mesh(trace, coil_detail=4, spline_detail=6):
-  renderers = [
-    RibbonTraceRenderer(trace, coil_detail, spline_detail),
-    ShapeTraceRenderer(trace, render.ArrowShape(0.4)),
-  ]
-  n_vertex = sum(p.n_vertex for p in renderers)
-  vertex_buffer = render.IndexedVertexBuffer(n_vertex)
-  for r in renderers:
-    r.render_to_buffer(vertex_buffer)
   return vertex_buffer
 
 
-class CylinderTraceRenderer():
-  def __init__(self, trace, coil_detail):
-    self.trace = trace
-    n_point = len(self.trace.points)
-    self.cylinder = render.CylinderShape(coil_detail)
-    self.n_vertex = self.cylinder.n_vertex * (n_point - 1)
-
-  def render_to_buffer(self, vertex_buffer):
-    grey = [0.7]*3
-    for piece in self.trace.pieces:
-      points = piece.points
-      for i_segment in range(len(points) - 1):
-        tangent = points[i_segment+1] - points[i_segment]
-        up = piece.ups[i_segment]
-        self.cylinder.render_to_center(
-            vertex_buffer,
-            points[i_segment],
-            tangent,
-            up,
-            0.5,
-            grey,
-            piece.objids[i_segment])
+def make_arrow_mesh(trace):
+  shape = render.ArrowShape(1.0, 0.5, 0.32)
+  n_point = 0
+  for piece in trace.pieces:
+    n_point += len(piece.points)
+  n_vertex = shape.n_vertex*n_point
+  vertex_buffer = render.IndexedVertexBuffer(n_vertex)
+  for piece in trace.pieces:
+    n_point = len(piece.points)
+    for i in range(n_point):
+      shape.render_to_center(
+          vertex_buffer,
+          piece.points[i], 
+          piece.tangents[i],
+          piece.ups[i],
+          1.0,
+          piece.residues[i].color,
+          piece.objids[i])
+  return vertex_buffer
 
 
 def make_cylinder_trace_mesh(
     trace, coil_detail=4, spline_detail=6, sphere_detail=4):
-  renderers = [
-    CylinderTraceRenderer(trace, coil_detail),
-    ShapeTraceRenderer(trace, render.SphereShape(
-        sphere_detail, sphere_detail, 0.6)),
-  ]
-  n_vertex = sum(p.n_vertex for p in renderers)
+  cylinder = render.CylinderShape(coil_detail)
+  n_point = sum(len(piece.points) for piece in trace.pieces)
+  n_vertex = cylinder.n_vertex * 2* n_point
   vertex_buffer = render.IndexedVertexBuffer(n_vertex)
-  for r in renderers:
-    r.render_to_buffer(vertex_buffer)
+  for piece in trace.pieces:
+    points = piece.points
+    for i_segment in range(len(points) - 1):
+      tangent = 0.5*(points[i_segment+1] - points[i_segment])
+      up = piece.ups[i_segment] + piece.ups[i_segment+1]
+      cylinder.render_to_center(
+          vertex_buffer,
+          points[i_segment],
+          tangent,
+          up,
+          0.3,
+          piece.residues[i_segment].color,
+          piece.objids[i_segment])
+      cylinder.render_to_center(
+          vertex_buffer,
+          points[i_segment+1],
+          -tangent,
+          up,
+          0.3,
+          piece.residues[i_segment+1].color,
+          piece.objids[i_segment+1])
   return vertex_buffer
-
-
-class Bond():
-  def __init__(self, atom1, atom2):
-    self.atom1 = atom1
-    self.atom2 = atom2
-
-
-class BallAndStickRenderer():
-  def __init__(self, trace):
-    self.trace = trace
-    self.sphere = render.SphereShape(6, 6, 10)
-    self.cylinder = render.CylinderShape(6)
-    self.n_vertex = len(self.trace.draw_to_screen_atoms)*self.sphere.n_vertex
-    self.n_vertex += len(self.trace.bonds)*self.cylinder.n_vertex
-
-  def render_to_buffer(self, vertex_buffer):
-    grey = [0.7]*3
-    color_by_ss = {
-      'C': (0.5, 0.5, 0.5),
-      'H': (1.0, 0.4, 0.4),
-      'E': (0.4, 0.4, 1.0)
-    }
-    for atom in self.trace.draw_to_screen_atoms:
-      point = atom.pos
-      if hasattr(atom, 'res_objid'):
-        objid = atom.res_objid
-        color = color_by_ss[atom.residue.ss]
-      else:
-        objid = 0
-        color = grey
-      self.sphere.render_to_center(
-          vertex_buffer,
-          point,
-          point,
-          point,
-          0.02,
-          color,
-          objid)
-    for i, bond in enumerate(self.trace.bonds):
-      if hasattr(bond.atom1, 'res_objid'):
-        color = color_by_ss[bond.atom1.residue.ss]
-        objid = bond.atom1.res_objid
-      else:
-        color = grey
-        objid = 0
-      self.cylinder.render_to_center(
-          vertex_buffer,
-          bond.atom1.pos,
-          bond.tangent,
-          bond.up,
-          0.2,
-          color,
-          objid)
-
 
 
 def make_ball_and_stick_mesh(trace):
-  renderers = [
-    BallAndStickRenderer(trace),
-  ]
-  n_vertex = sum(p.n_vertex for p in renderers)
+  sphere = render.SphereShape(5, 5)
+  cylinder = render.CylinderShape(5)
+  n_vertex = len(trace.draw_to_screen_atoms)*sphere.n_vertex
+  n_vertex += len(trace.bonds)*cylinder.n_vertex
   vertex_buffer = render.IndexedVertexBuffer(n_vertex)
-  for r in renderers:
-    r.render_to_buffer(vertex_buffer)
+  for atom in trace.draw_to_screen_atoms:
+    point = atom.pos
+    objid = atom.res_objid
+    color = atom.residue.color
+    sphere.render_to_center(
+        vertex_buffer,
+        point,
+        point,
+        point,
+        0.2,
+        color,
+        objid)
+  for bond in trace.bonds:
+    color = bond.atom1.residue.color
+    objid = bond.atom1.res_objid
+    cylinder.render_to_center(
+        vertex_buffer,
+        bond.atom1.pos,
+        bond.tangent,
+        bond.up,
+        0.2,
+        color,
+        objid)
   return vertex_buffer
-
 
 
 class OpenGlHandler():
@@ -609,13 +551,16 @@ class PyBall:
     self.n_step_animate = 0
 
     print "Building cylindrical trace..."
-    self.cylinder_draw_object = make_cylinder_trace_mesh(self.rendered_soup, 6, 5, 10)
+    self.ribbon_draw_object = make_cylinder_trace_mesh(self.rendered_soup, 6, 5, 10)
     print "Building ribbons..."
     self.ribbon_draw_object = make_carton_mesh(self.rendered_soup)
+    print "Building arrows..."
+    self.arrow_draw_object = make_arrow_mesh(self.rendered_soup)
     print "Building ball and sticks..."
     self.ball_stick_draw_object = make_ball_and_stick_mesh(self.rendered_soup)
     self.is_stick = False
     self.opengl.draw_objects.append(self.ribbon_draw_object)
+    self.opengl.draw_objects.append(self.arrow_draw_object)
 
     self.set_callbacks()
 
@@ -654,8 +599,14 @@ class PyBall:
       self.is_stick = not self.is_stick
       self.opengl.draw_objects = []
       self.opengl.draw_objects.append(self.ribbon_draw_object)
+      self.opengl.draw_objects.append(self.arrow_draw_object)
       if self.is_stick:
         self.opengl.draw_objects.append(self.ball_stick_draw_object)
+    elif c.lower() == b'c':
+      if glut.glutGetModifiers() == glut.GLUT_ACTIVE_CTRL:
+        print "Exit"
+        glut.glutLeaveMainLoop()
+        sys.exit(1)
     elif c == b'q':
       sys.exit(0)
     glut.glutPostRedisplay()

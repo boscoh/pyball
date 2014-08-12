@@ -42,11 +42,10 @@ class IndexedVertexBuffer:
     self.index_buffer = None
 
   def setup_next_strip(self, indices):
+    # must be called before add_vertex due to 
+    # self.i_vertex_in_buffer call
     self.size_strip_list.append(len(indices))
-    if indices is None:
-      indices = range(n_vertex)
-    i_vertex = self.i_vertex_in_buffer
-    indices = [i + i_vertex for i in indices]
+    indices = [i + self.i_vertex_in_buffer for i in indices]
     self.indices.extend(indices)
 
   def add_vertex(self, vertex, normal, color, objectid):
@@ -121,10 +120,10 @@ def calc_cyclic_normals(arcs, tangent):
 
 
 class CircleProfile():
-  def __init__(self, n_arc=10):
+  def __init__(self, n_arc=10, radius=1.0):
     self.n_arc = n_arc
     tangent = v3.vector(0, 0, 1)
-    rotator = v3.vector(0, 0.4, 0)
+    rotator = v3.vector(0, radius, 0)
     self.arcs = []
     angle = v3.radians(360/n_arc)
     rotation = v3.rotation(tangent, angle)
@@ -136,11 +135,11 @@ class CircleProfile():
 
 
 class RectProfile():
-  def __init__(self):
+  def __init__(self, width=1.5, thickness=0.3):
     tangent = v3.vector(0, 0, 1)
-    up = v3.vector(0, 1.5, 0)
+    up = v3.vector(0, width, 0)
     right = v3.cross(up, tangent)
-    right = 0.2*right
+    right = thickness/width*right
     self.arcs = [
         right + up,
               + up,
@@ -200,30 +199,25 @@ class TubeRender():
 # Faces and polygons from standard 3D shapes
 
 class ArrowShape():
-  def __init__(self, w=0.6):
+  def __init__(self, length=2.0, width=0.8, thickness=1.0):
     arrow_face_in_zx = [
-      v3.vector(0, 0, 2),
-      v3.vector(0, -0.8, -2),
-      v3.vector(0, 0.8, -2),
+      v3.vector(0, 0, length),
+      v3.vector(0, -width, -length),
+      v3.vector(0, width, -length),
       ]
 
-    i = 0
     self.points = []
     self.faces = []
     n_arc = len(arrow_face_in_zx)
-    points = [p + v3.vector(1.0, 0, 0) for p in arrow_face_in_zx]
-    points = [p*w for p in points]
+    points = [p + v3.vector(thickness, 0, 0) for p in arrow_face_in_zx]
     self.points.extend(points)
-    face = [i + j for j in range(len(points))] 
-    self.faces.append(list(reversed(face)))
-    i += n_arc
-
-    points = [p + v3.vector(-1.0, 0, 0) for p in arrow_face_in_zx]
-    points = [p*w for p in points]
-    self.points.extend(points)
-    face = [i + j for j in range(len(points))] 
+    face = list(reversed(range(len(points))))
     self.faces.append(face)
-    i += n_arc
+
+    points = [p + v3.vector(-thickness, 0, 0) for p in arrow_face_in_zx]
+    self.points.extend(points)
+    face = [n_arc + j for j in range(len(points))] 
+    self.faces.append(face)
 
     for i in range(n_arc):
       face = [
@@ -249,7 +243,7 @@ class ArrowShape():
 
 
 class SphereShape:
-  def __init__(self, n_stack, n_arc, scale):
+  def __init__(self, n_stack=5, n_arc=5, scale=1.0):
     self.arcs = []
     self.stacks = []
     self.indices = []
@@ -302,9 +296,9 @@ class CylinderShape:
     l = v3.scaling_matrix(1, 1, v)
     m = get_xy_face_transform(tangent, up, scale)
     n = v3.combine(m, l)
+    vertex_buffer.setup_next_strip(self.indices)
     for i in range(self.n_vertex):
       vertex = v3.transform(n, self.points[i]) + center
       normal = v3.transform(n, self.normals[i])
       vertex_buffer.add_vertex(vertex, normal, color, objid)
-    vertex_buffer.setup_next_strip(self.indices)
 

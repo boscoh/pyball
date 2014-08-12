@@ -9,7 +9,7 @@ to an OpenGL matrix for rendering.
 
 import pdbremix.v3numpy as v3
 from ctypes import c_float
-
+import numpy
 
 
 def matrix_to_c_floats(m, n_dim):
