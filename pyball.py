@@ -371,7 +371,7 @@ def make_carton_mesh(
       j_residue = i_residue + 1
 
   n_vertex = sum(r.n_vertex for r in renderers)
-  vertex_buffer = render.IndexedVertexBuffer(n_vertex)
+  vertex_buffer = render.TriangleVertexBuffer(n_vertex)
 
   for r in renderers:
       r.render_to_buffer(vertex_buffer)
@@ -385,7 +385,7 @@ def make_arrow_mesh(rendered_soup):
   for piece in rendered_soup.pieces:
     n_point += len(piece.points)
   n_vertex = shape.n_vertex*n_point
-  vertex_buffer = render.IndexedVertexBuffer(n_vertex)
+  vertex_buffer = render.TriangleVertexBuffer(n_vertex)
   for piece in rendered_soup.pieces:
     n_point = len(piece.points)
     for i in range(n_point):
@@ -405,7 +405,7 @@ def make_cylinder_trace_mesh(
   cylinder = render.CylinderShape(coil_detail)
   n_point = sum(len(piece.points) for piece in rendered_soup.pieces)
   n_vertex = cylinder.n_vertex * 2* n_point
-  vertex_buffer = render.IndexedVertexBuffer(n_vertex)
+  vertex_buffer = render.TriangleVertexBuffer(n_vertex)
   for piece in rendered_soup.pieces:
     points = piece.points
     for i_segment in range(len(points) - 1):
@@ -435,7 +435,7 @@ def make_ball_and_stick_mesh(rendered_soup):
   cylinder = render.CylinderShape(5)
   n_vertex = len(rendered_soup.draw_to_screen_atoms)*sphere.n_vertex
   n_vertex += len(rendered_soup.bonds)*cylinder.n_vertex
-  vertex_buffer = render.IndexedVertexBuffer(n_vertex)
+  vertex_buffer = render.TriangleVertexBuffer(n_vertex)
   for atom in rendered_soup.draw_to_screen_atoms:
     point = atom.pos
     objid = atom.res_objid

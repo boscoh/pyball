@@ -15,7 +15,7 @@ from OpenGL import GL as gl
 
 
 
-class IndexedVertexBuffer:
+class TriangleVertexBuffer:
   """
   Creates an indexed interleaved vertex buffer consisting of vertex, 
   normal and colors. Used to display triangle strips or triangles.
@@ -42,11 +42,12 @@ class IndexedVertexBuffer:
     self.index_buffer = None
 
   def setup_next_strip(self, indices):
-    # must be called before add_vertex due to 
-    # self.i_vertex_in_buffer call
-    self.size_strip_list.append(len(indices))
+    """
+    Add triangular indices relative to self.i_vertex_in_buffer
+    """
     indices = [i + self.i_vertex_in_buffer for i in indices]
     self.indices.extend(indices)
+
 
   def add_vertex(self, vertex, normal, color, objectid):
     if self.i_vertex_in_buffer >= self.n_vertex:
@@ -87,21 +88,19 @@ class IndexedVertexBuffer:
       gl.glDisableVertexAttribArray(self.shader.locations[attrib])
 
   def draw_triangle_strips(self):
-    offset_strip = 0
-    for size_strip in self.size_strip_list:
-      gl.glDrawElements(
-          gl.GL_TRIANGLE_STRIP,
-          size_strip, 
-          gl.GL_UNSIGNED_INT,
-          c_void_p(offset_strip))
-      offset_strip += size_strip*sizeof(c_uint)
+    n_index = len(self.indices)*3
+    gl.glDrawElements(
+        gl.GL_TRIANGLES,
+        n_index, 
+        gl.GL_UNSIGNED_INT,
+        c_void_p(0))
+
   
   def draw(self, shader):
     self.shader = shader
     self.bind_to_draw_context()
     self.draw_triangle_strips()
     self.release_from_draw_context()
-
 
 
 
@@ -173,13 +172,10 @@ class TubeRender():
     n_arc = len(self.profile.arcs)
 
     # draw front face
-    indices = [0, 1]
+    indices = []
     for i_arc in range((n_arc-1)/2):
-      j_arc = n_arc - i_arc - 1
-      indices.append(j_arc)
-      j_arc = 2 + i_arc
-      if j_arc <= n_arc/2:
-        indices.append(j_arc)
+      indices.extend([i_arc, i_arc+1, n_arc-1-i_arc])
+      indices.extend([n_arc-1-i_arc, i_arc+1, n_arc-2-i_arc])
     vertex_buffer.setup_next_strip(indices)
 
     m = get_xy_face_transform(
@@ -197,9 +193,14 @@ class TubeRender():
     for i_point in range(n_point-1):
       i_slice_offset = i_point*n_arc
       j_slice_offset = (i_point+1)*n_arc
-      for i_arc in range(n_arc+1):
-        indices.append(i_slice_offset + i_arc % n_arc)
-        indices.append(j_slice_offset + i_arc % n_arc)
+      for i_arc in range(n_arc):
+        j_arc = (i_arc+1) % n_arc
+        indices.append(i_slice_offset + i_arc)
+        indices.append(j_slice_offset + i_arc)
+        indices.append(i_slice_offset + j_arc)
+        indices.append(i_slice_offset + j_arc)
+        indices.append(j_slice_offset + i_arc)
+        indices.append(j_slice_offset + j_arc)
     vertex_buffer.setup_next_strip(indices)
 
     for i in range(n_point):
@@ -214,13 +215,10 @@ class TubeRender():
             arcs[i_arc], normals[i_arc], self.color, self.trace.objids[i])
 
     # draw back face
-    indices = [0, 1]
+    indices = []
     for i_arc in range((n_arc-1)/2):
-      j_arc = n_arc - i_arc - 1
-      indices.append(j_arc)
-      j_arc = 2 + i_arc
-      if j_arc <= n_arc/2:
-        indices.append(j_arc)
+      indices.extend([i_arc, i_arc+1, n_arc-1-i_arc])
+      indices.extend([n_arc-1-i_arc, i_arc+1, n_arc-2-i_arc])
     vertex_buffer.setup_next_strip(indices)
 
     i_point = n_point - 1
@@ -247,38 +245,32 @@ class ArrowShape():
       ]
 
     self.points = []
-    self.faces = []
-    n_arc = len(arrow_face_in_zx)
-    points = [p + v3.vector(thickness, 0, 0) for p in arrow_face_in_zx]
-    self.points.extend(points)
-    face = list(reversed(range(len(points))))
-    self.faces.append(face)
+    self.points.extend(
+        [p + v3.vector(thickness, 0, 0) for p in arrow_face_in_zx])
+    self.points.extend(
+        [p + v3.vector(-thickness, 0, 0) for p in arrow_face_in_zx])
 
-    points = [p + v3.vector(-thickness, 0, 0) for p in arrow_face_in_zx]
-    self.points.extend(points)
-    face = [n_arc + j for j in range(len(points))] 
-    self.faces.append(face)
-
+    self.point_indices = [0, 1, 2, 4, 3, 5]
+    n_arc = 3
     for i in range(n_arc):
-      face = [
-        i % n_arc,
-        (i+1) % n_arc,
-        i % n_arc + n_arc,
-        (i+1) % n_arc + n_arc]
-      self.faces.append(face)
-
-    self.n_vertex = sum(len(f) for f in self.faces)
+      j = (i+1) % n_arc
+      self.point_indices.extend([
+         i, i + n_arc, j, i + n_arc, j + n_arc, j ])
+ 
+    self.n_triangle = 2 + 2*n_arc
+    self.n_vertex = 3*self.n_triangle
 
   def render_to_center(
       self, vertex_buffer, center, tangent, up, scale, color, objid):
     m = get_xy_face_transform(tangent, up, scale)
-    for face in self.faces:
-      n_vertex = len(face)
-      vertex_buffer.setup_next_strip(range(n_vertex))
-      p0, p1, p2 = [self.points[i] for i in reversed(face[:3])]
-      normal = v3.transform(m, v3.cross(p0 - p1, p0 - p2))
-      for i in face:
-        vertex = v3.transform(m, self.points[i]) + center
+    vertex_buffer.setup_next_strip(range(self.n_vertex))
+    for i_triangle in range(self.n_triangle):
+      triangle_indices = self.point_indices[i_triangle*3:i_triangle*3+3]
+      triangle_points = [self.points[i] for i in reversed(triangle_indices)]
+      p0, p1, p2 = triangle_points
+      normal = v3.transform(m, v3.cross(p1 - p0, p0 - p2))
+      for point in triangle_points:
+        vertex = v3.transform(m, point) + center
         vertex_buffer.add_vertex(vertex, normal, color, objid)
 
 
@@ -298,20 +290,26 @@ class SphereShape:
         y = scale * radius * math.sin(i_arc * arc_angle);
         self.points.append(v3.vector(x,y,z))
     for i_stack in range(n_stack-1):
-      for i_arc in range(n_arc+1):
+      for i_arc in range(n_arc):
+        j_arc = (i_arc+1) % n_arc
         self.indices.extend([
           (i_stack) * n_arc     + i_arc,
-          (i_stack+1) * n_arc   + i_arc])
+          (i_stack+1) * n_arc   + i_arc,
+          (i_stack+1) * n_arc   + j_arc,
+          (i_stack+1) * n_arc   + j_arc,
+          (i_stack) * n_arc     + j_arc,
+          (i_stack) * n_arc     + i_arc,
+          ])
     self.n_vertex = n_stack*n_arc
 
   def render_to_center(
       self, vertex_buffer, center, tangent, up, scale, color, objid):
     m = v3.scaling_matrix(scale, scale, scale)
+    vertex_buffer.setup_next_strip(self.indices)
     for i in range(self.n_vertex):
       normal = self.points[i]
       vertex = v3.transform(m, self.points[i]) + center
       vertex_buffer.add_vertex(vertex, normal, color, objid)
-    vertex_buffer.setup_next_strip(self.indices)
 
 
 class CylinderShape:
@@ -326,8 +324,11 @@ class CylinderShape:
         y = radius * math.sin(j * arc_angle)
         self.normals.append(v3.vector(x, y, 0.0))
         self.points.append(v3.vector(x, y, z))
-    for i in range(n_arc+1):
-      self.indices.extend([i%n_arc, n_arc + i%n_arc])
+    for i_arc in range(n_arc):
+      j_arc = (i_arc+1) % n_arc
+      self.indices.extend(
+          [j_arc, i_arc, n_arc + i_arc, 
+           j_arc, n_arc + i_arc, n_arc + j_arc])
     self.n_vertex = 2*n_arc
 
   def render_to_center(
