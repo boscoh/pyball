@@ -56,12 +56,13 @@ def atom_name(atom):
   return atom.res_tag() + '-' + atom.res_type  + '-' + atom.type
 
 
-class PieceCalphaTrace:
+class CalphaTrace:
   def __init__(self):
     self.points = []
     self.ups = []
     self.tangents = []
     self.objids = []
+    self.residues = []
 
   def get_prev_point(self, i):
     if i > 0:
@@ -88,10 +89,9 @@ class PieceCalphaTrace:
       return self.ups[i]
 
 
-def spline(t, p1, p2, p3, p4):
+def catmull_rom_spline(t, p1, p2, p3, p4):
   """
-  Returns a point at fraction t between p2 and p3 
-  using Catmull-Rom spline.
+  Returns a point at fraction t between p2 and p3.
   """
   return \
       0.5 * (   t*((2-t)*t    - 1)  * p1
@@ -100,35 +100,42 @@ def spline(t, p1, p2, p3, p4):
               + (t-1)*t*t           * p4 )
 
 
-class SplineTrace(PieceCalphaTrace):
+class SplineTrace(CalphaTrace):
   """
-  A Spline Trace is used to draw ribbons and tubes.
-  It's essentially a collection of points, objids, tangents and ups.
+  SplineTrace expands the points in a CalphaTrace using
+  a spline interpolation.
   """
   def __init__(self, trace, n_division):
-    PieceCalphaTrace.__init__(self)
+    CalphaTrace.__init__(self)
 
-    n_guide_point = len(trace.points)
     delta = 1/float(n_division)
 
-    for i in range(n_guide_point-1):
+    for i in range(len(trace.points)-1):
       n = n_division
       j = i+1
-      if j == n_guide_point - 1:
+      # last division includes the very last trace point
+      if j == len(trace.points) - 1:
         n += 1
       for k in range(n):
         self.points.append(
-          spline(
+          catmull_rom_spline(
             k*delta, 
             trace.get_prev_point(i), 
             trace.points[i],
             trace.points[j], 
             trace.get_next_point(j)))
+        self.ups.append(
+          catmull_rom_spline(
+             k*delta, 
+             trace.get_prev_up(i), 
+             trace.ups[i], 
+             trace.ups[j], 
+             trace.get_next_up(j)))
         if k/float(n) < 0.5:
-          i_objid = i
+          objid = trace.objids[i]
         else:
-          i_objid = i+1
-        self.objids.append(trace.objids[i_objid])
+          objid = trace.objids[i+1]
+        self.objids.append(objid)
 
     n_point = len(self.points)
     for i in range(n_point):
@@ -140,27 +147,6 @@ class SplineTrace(PieceCalphaTrace):
         tangent = self.points[i+1] - self.points[i-1]
       self.tangents.append(tangent)
 
-    for i in range(n_guide_point-1):
-      if i == 0:
-        prev_up = trace.ups[0]
-      else:
-        prev_up = trace.ups[i-1]
-      if i == n_guide_point - 2:
-        next_up = trace.ups[-1]
-      else:
-        next_up = trace.ups[i+2]
-      n = n_division
-      if i == n_guide_point - 2:
-        n += 1
-      for k in range(n):
-        self.ups.append(
-          spline(
-             k*delta, 
-             trace.get_prev_up(i), 
-             trace.ups[i], 
-             trace.ups[i+1], 
-             trace.get_next_up(i)))
-
 
 class Bond():
   def __init__(self, atom1, atom2):
@@ -171,89 +157,141 @@ class Bond():
 class RenderedSoup():
   def __init__(self, soup):
     self.soup = soup
-    self.bonds = []
+
+    self.atom_by_objid = {}
+    self.build_objids()
+
+    self.residues = []
     self.points = []
     self.objids = []
-    self.tops = []
-    self.pieces = []
-    self.ss_pieces = []
-    self.objid_ref = {}
-    self.residues = []
-
-    self.build_objids()
+    self.ups = []
     self.find_points()
-    self.find_ss()
-    self.find_pieces()
+
+    self.bonds = []
     self.find_bonds()
+
+    self.pieces = []
+    self.find_pieces()
+
+    # self.find_ss_by_zhang_skolnick()
+    self.find_bb_hbonds()
+    self.find_ss_by_bb_hbonds()
 
   def build_objids(self):
     for atom in self.soup.atoms():
       objid = get_next_objid()
-      self.objid_ref[objid] = atom
+      self.atom_by_objid[objid] = atom
       atom.objid = objid
       atom.res_objid = 0
-    for residue in self.soup.residues():
-      if residue.has_atom('CA'):
-        res_objid = residue.atom('CA').objid
-      else:
-        res_objid = residue.atoms()[0].objid
-      residue.ss = '-'
-      residue.color = [0.4, 1.0, 0.4]
-      residue.objid = res_objid
-      for atom in residue.atoms():
-        atom.res_objid = atom.objid
-        atom.residue = residue
 
   def find_points(self):
     for residue in self.soup.residues():
-      if residue.has_atom('CA'):
+      residue.ss = '-'
+      residue.color = [0.4, 1.0, 0.4]
+      if residue.has_atom('CA') and residue.has_atom('C') and residue.has_atom('O'):
+        ca = residue.atom('CA')
+        c = residue.atom('C')
+        o = residue.atom('O')
+        res_objid = ca.objid
         self.residues.append(residue)
-        atom = residue.atom('CA')
-        self.points.append(atom.pos)
-        self.tops.append(residue.atom('C').pos - residue.atom('O').pos)
-        self.objids.append(atom.objid)
-    # FIXIT: remove the alternate conformation not in residue
+        self.objids.append(res_objid)
+        self.points.append(ca.pos)
+        self.ups.append(c.pos - o.pos)
+      else:
+        res_objid = residue.atoms()[0].objid
+      residue.objid = res_objid
+      for atom in residue.atoms():
+        atom.residue = residue
+
+    # remove alternate conformation by looking for orphaned atoms
     atoms = self.soup.atoms()
     n = len(atoms)
     for i in reversed(range(n)):
       atom = atoms[i]
       if not hasattr(atom, 'residue'):
         del atoms[i]
-    n_point = len(self.points)
-    for i in range(1, n_point):
-      if v3.dot(self.tops[i-1], self.tops[i]) < 0:
-         self.tops[i] = -self.tops[i]
+
+    # smooth the ups
+    for i in range(1, len(self.points)):
+      if v3.dot(self.ups[i-1], self.ups[i]) < 0:
+         self.ups[i] = -self.ups[i]
+
+    # find geometrical center of points
     self.center = v3.get_center(self.points)
     centered_points = [p - self.center for p in self.points]
+
     self.scale = 1.0/max(map(max, centered_points))
 
-  def find_ss(self):
-    
-    def zhang_skolnick_test(i, template_dists, delta):
-      for j in range(max(0, i-2), i+1):
-        for diff in range(2, 5):
-          k = j + diff
-          if k >= len(self.points):
-            continue
-          dist = v3.distance(self.points[j], self.points[k])
-          if abs(dist - template_dists[diff]) > delta:
-            return False
-      return True
+  def co_nh(self, res1, res2):
+    if not (res1.has_atom('O') and res2.has_atom('N')):
+      return False
+    o = res1.atom('O').pos
+    n = res2.atom('N').pos
+    m = (o[0]-n[0])*(o[0]-n[0]) + (o[1]-n[1])*(o[1]-n[1]) + (o[2]-n[2])*(o[2]-n[2])
+    return m < 12.25
 
-    helix_distances = { 2:5.45, 3:5.18, 4:6.37 }
-    helix_delta = 2.1
-    sheet_distances = { 2:6.1, 3:10.4, 4:13.0 }
-    sheet_delta = 1.42
-    for i in range(len(self.points)):
-      if zhang_skolnick_test(i, helix_distances, helix_delta):
-        ss = 'H'
-      elif zhang_skolnick_test(i, sheet_distances, sheet_delta):
-        ss = 'E'
-      else:
-        ss = 'C'
-      self.residues[i].ss = ss
+  def find_bb_hbonds(self):
+    print "Find H-Bonds..."
+    for residue in self.residues:
+      residue.hb_partners = []
+    n_res = len(self.residues)
+    for i_res1 in range(n_res):
+      res1 = self.residues[i_res1]
+      for i_res2 in range(i_res1+3, n_res):
+        res2 = self.residues[i_res2]
+        if self.co_nh(res1, res2) or self.co_nh(res2, res1):
+          res1.hb_partners.append(i_res2)
+          res2.hb_partners.append(i_res1)
+
+  def find_ss_by_bb_hbonds(self):
+
+    def is_hb(i_res, j_res):
+      if not (0 <= i_res <= len(self.residues) - 1):
+        return False
+      return j_res in self.residues[i_res].hb_partners
+
+    print "Find Secondary Structure..."
+    for res in self.residues:
+      res.ss = 'C'
+
+    n_res = len(self.residues)
+    for i_res1 in range(n_res):
+      for i_res2 in range(n_res):
+        if abs(i_res1-i_res2) > 5:
+          if is_hb(i_res1, i_res2):
+            beta_residues = []
+
+            # parallel beta sheet pairs
+            if is_hb(i_res1-2, i_res2-2):
+              beta_residues.extend(
+                  [i_res1-2, i_res1-1, i_res1, i_res2-2, i_res2-1, i_res2])
+            if is_hb(i_res1+2, i_res2+2):
+              beta_residues.extend(
+                  [i_res1+2, i_res1+1, i_res1, i_res2+2, i_res2+1, i_res2])
+
+            # anti-parallel beta sheet pairs
+            if is_hb(i_res1-2, i_res2+2):
+              beta_residues.extend(
+                  [i_res1-2, i_res1-1, i_res1, i_res2+2, i_res2+1, i_res2])
+            if is_hb(i_res1+2, i_res2-2):
+              beta_residues.extend(
+                  [i_res1+2, i_res1+1, i_res1, i_res2-2, i_res2-1, i_res2])
+
+            for i_res in beta_residues:
+              self.residues[i_res].ss = 'E' 
+
+      # alpha-helix
+      if is_hb(i_res1, i_res1+4) and is_hb(i_res1+1, i_res1+5):
+        for i_res in range(i_res1+1, i_res1+5):
+          self.residues[i_res].ss = 'H'
+
+      # 3-10 helix
+      if is_hb(i_res1, i_res1+3) and is_hb(i_res1+1, i_res1+4):
+        for i_res in range(i_res1+1, i_res1+4):
+          self.residues[i_res].ss = 'H'
 
     color_by_ss = {
+      '-': (0.5, 0.5, 0.5),
       'C': (0.5, 0.5, 0.5),
       'H': (0.8, 0.4, 0.4),
       'E': (0.4, 0.4, 0.8)
@@ -276,7 +314,7 @@ class RenderedSoup():
         if dist > cutoff:
           is_new_piece = True
       if is_new_piece:
-        piece = PieceCalphaTrace()
+        piece = CalphaTrace()
         piece.points = self.points[i:j]
         piece.objids = self.objids[i:j]
         piece.residues = self.residues[i:j]
@@ -293,11 +331,11 @@ class RenderedSoup():
         piece.ups = []
         for k in range(n_point_piece):
           k_full = k + i
-          up = self.tops[k_full]
+          up = self.ups[k_full]
           if k > 0:
-            up = up + self.tops[k_full-1]
+            up = up + self.ups[k_full-1]
           elif k < n_point_piece-1:
-            up = up + self.tops[k_full+1]
+            up = up + self.ups[k_full+1]
           up = v3.perpendicular(up, piece.tangents[k])
           piece.ups.append(v3.norm(up))
 
@@ -331,7 +369,6 @@ def make_carton_mesh(
     rendered_soup, coil_detail=5, spline_detail=3, 
     width=1.6, thickness=0.2):
 
-  # extrusion cross sections
   rect = render.RectProfile(width, thickness)
   circle = render.CircleProfile(coil_detail, thickness)
 
@@ -340,6 +377,7 @@ def make_carton_mesh(
     spline = SplineTrace(piece, 2*spline_detail)
 
     n_residue = len(piece.points)
+
     i_residue = 0
     j_residue = 1
     while i_residue < n_residue:
@@ -352,7 +390,7 @@ def make_carton_mesh(
       while j_residue < n_residue and piece.residues[j_residue].ss == ss:
         j_residue += 1
 
-      sub_spline = PieceCalphaTrace()
+      sub_spline = CalphaTrace()
       i_spline = i_residue * 2*spline_detail - spline_detail
       if i_spline < 0:
         i_spline = 0
@@ -379,11 +417,11 @@ def make_carton_mesh(
   return vertex_buffer
 
 
-def make_arrow_mesh(rendered_soup):
-  shape = render.ArrowShape(0.6, 0.3, 0.24)
-  n_point = 0
-  for piece in rendered_soup.pieces:
-    n_point += len(piece.points)
+def make_arrow_mesh(
+    rendered_soup, arrow_length=0.6, arrow_width=0.3, arrow_thickness=0.24):
+  shape = render.ArrowShape(
+      arrow_length, arrow_width, arrow_thickness)
+  n_point = sum(len(p.points) for p in rendered_soup.pieces)
   n_vertex = shape.n_vertex*n_point
   vertex_buffer = render.TriangleVertexBuffer(n_vertex)
   for piece in rendered_soup.pieces:
@@ -401,7 +439,8 @@ def make_arrow_mesh(rendered_soup):
 
 
 def make_cylinder_trace_mesh(
-    rendered_soup, coil_detail=4, spline_detail=6, sphere_detail=4):
+    rendered_soup, coil_detail=4, spline_detail=6, sphere_detail=4,
+    radius=0.3):
   cylinder = render.CylinderShape(coil_detail)
   n_point = sum(len(piece.points) for piece in rendered_soup.pieces)
   n_vertex = cylinder.n_vertex * 2* n_point
@@ -416,7 +455,7 @@ def make_cylinder_trace_mesh(
           points[i_segment],
           tangent,
           up,
-          0.3,
+          radius,
           piece.residues[i_segment].color,
           piece.objids[i_segment])
       cylinder.render_to_center(
@@ -424,39 +463,41 @@ def make_cylinder_trace_mesh(
           points[i_segment+1],
           -tangent,
           up,
-          0.3,
+          radius,
           piece.residues[i_segment+1].color,
           piece.objids[i_segment+1])
   return vertex_buffer
 
 
-def make_ball_and_stick_mesh(rendered_soup):
-  sphere = render.SphereShape(5, 5)
-  cylinder = render.CylinderShape(5)
+def make_ball_and_stick_mesh(
+    rendered_soup, sphere_stack=5, sphere_arc=5, 
+    tube_arc=5, radius=0.2):
+  sphere = render.SphereShape(sphere_stack, sphere_arc)
+  cylinder = render.CylinderShape(tube_arc)
   n_vertex = len(rendered_soup.draw_to_screen_atoms)*sphere.n_vertex
   n_vertex += len(rendered_soup.bonds)*cylinder.n_vertex
   vertex_buffer = render.TriangleVertexBuffer(n_vertex)
   for atom in rendered_soup.draw_to_screen_atoms:
     point = atom.pos
-    objid = atom.res_objid
+    objid = atom.residue.objid
     color = atom.residue.color
     sphere.render_to_center(
         vertex_buffer,
         point,
         point,
         point,
-        0.2,
+        radius,
         color,
         objid)
   for bond in rendered_soup.bonds:
     color = bond.atom1.residue.color
-    objid = bond.atom1.res_objid
+    objid = bond.atom1.residue.objid
     cylinder.render_to_center(
         vertex_buffer,
         bond.atom1.pos,
         bond.tangent,
         bond.up,
-        0.2,
+        radius,
         color,
         objid)
   return vertex_buffer
@@ -551,13 +592,25 @@ class PyBall:
     self.n_step_animate = 0
 
     print "Building cylindrical trace..."
-    self.ribbon_draw_object = make_cylinder_trace_mesh(self.rendered_soup, 6, 5, 10)
+    self.ribbon_draw_object = make_cylinder_trace_mesh(
+        self.rendered_soup, coil_detail=4, spline_detail=6, 
+        sphere_detail=4, radius=0.3)
+
     print "Building ribbons..."
-    self.ribbon_draw_object = make_carton_mesh(self.rendered_soup)
+    self.ribbon_draw_object = make_carton_mesh(
+        self.rendered_soup, coil_detail=5, spline_detail=3, 
+        width=1.6, thickness=0.2)
+
     print "Building arrows..."
-    self.arrow_draw_object = make_arrow_mesh(self.rendered_soup)
+    self.arrow_draw_object = make_arrow_mesh(
+        self.rendered_soup, arrow_length=0.6, arrow_width=0.3, 
+        arrow_thickness=0.3)
+
     print "Building ball and sticks..."
-    self.ball_stick_draw_object = make_ball_and_stick_mesh(self.rendered_soup)
+    self.ball_stick_draw_object = make_ball_and_stick_mesh(
+        self.rendered_soup, sphere_stack=5, sphere_arc=5, 
+        tube_arc=5,  radius=0.2)
+
     self.is_stick = False
     self.opengl.draw_objects.append(self.ribbon_draw_object)
     self.opengl.draw_objects.append(self.arrow_draw_object)
@@ -618,7 +671,7 @@ class PyBall:
         self.save_objid = self.objid
       else:
         if self.save_objid == self.objid and self.objid > 0:
-          atom = self.rendered_soup.objid_ref[self.objid]
+          atom = self.rendered_soup.atom_by_objid[self.objid]
           self.opengl.new_camera.center = atom.pos
           self.n_step_animate = 10
           print x, y, atom_name(atom)
