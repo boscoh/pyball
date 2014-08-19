@@ -12,7 +12,8 @@ Written against Python 2.7. The dependencies are:
  - numpy
  - pdbremix
  - pyopengl
-
+ - vispy
+ 
 To install, do:
 
     pip install numpy pyopengl
