@@ -1,14 +1,13 @@
-# !/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# -----------------------------------------------------------------------------
-# 2014, Aurore Deschildre, Gael Goret, Cyrille Rossant, Nicolas P. Rougier.
-# Distributed under the terms of the new BSD License.
-# -----------------------------------------------------------------------------
+
 import numpy as np
 
-from vispy import gloo
+from vispy import gloo, scene
 from vispy import app
 from vispy.util.transforms import perspective, translate, rotate
+from vispy.scene.visuals import Text
+from vispy.scene.transforms import STTransform
 
 from pprint import pprint
 import math
@@ -703,11 +702,11 @@ def get_polar(x, y):
 
 
 
-class MolecularViewerCanvas(app.Canvas):
+class MolecularViewerCanvas(scene.SceneCanvas):
 
     def __init__(self, fname):
       app.Canvas.__init__(
-          self, title='Molecular viewer', close_keys='escape')
+          self, title='Molecular viewer')
 
       self.size = 500, 300
 
@@ -742,6 +741,10 @@ class MolecularViewerCanvas(app.Canvas):
       self.new_camera = Camera()
       self.n_step_animate = 0 
 
+      self.text = Text('X', bold=True, color=(1., 1., 1., 1.))
+      transform = STTransform((1., 1., 1.))
+      self.text._program.vert['transform'] = transform.shader_map()
+
       self.timer = app.Timer(1.0 / 30)  # change rendering speed here
       self.timer.connect(self.on_timer)
       self.timer.start()
@@ -774,6 +777,10 @@ class MolecularViewerCanvas(app.Canvas):
 
       self.program.bind(self.cartoon_vertex_buffer)
       self.program.draw('triangles', self.cartoon_index_buffer)
+
+      self.update()
+
+
 
     def pick(self, x, y):
       gl.glDisable(gl.GL_BLEND)
@@ -835,9 +842,10 @@ class MolecularViewerCanvas(app.Canvas):
       if event.button == 1:
         x_diff = event.pos[0] - self.save_event.pos[0]
         y_diff = event.pos[1] - self.save_event.pos[1]
+        scale = self.rendered_soup.scale
         self.camera.rotate(
-            x_diff/float(self.camera.width)/math.pi*180, 
-            y_diff/float(self.camera.height)/math.pi*180, 
+            x_diff/float(self.camera.width)*10/scale, 
+            y_diff/float(self.camera.height)*10/scale, 
             0.0)
         self.save_event = event
         self.update()
@@ -848,7 +856,7 @@ class MolecularViewerCanvas(app.Canvas):
               event.pos[1]/float(self.size[1])-0.5)
         r, psi = get_event_polar(event)
         r0, psi0 = get_event_polar(self.save_event)
-        self.camera.rezoom((r0-r)*200.)
+        self.camera.rezoom((r0-r)*500.)
         self.camera.rotate(0, 0, (psi - psi0)/math.pi*180)
         self.save_event = event
         self.update()
