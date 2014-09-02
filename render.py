@@ -5,47 +5,9 @@ Classes and objects that render geometric objects into
 polygon triangle strips to form meshes for OpenGL display.
 """
 
+
 import math
-
-import numpy as np
-
 from pdbremix import v3numpy as v3
-
-from vispy import gloo
-
-
-class TriangleStore:
-  def __init__(self, n_vertex):
-    self.data = np.zeros(
-      n_vertex, 
-      [('a_position', np.float32, 3),
-       ('a_normal', np.float32, 3),
-       ('a_color', np.float32, 3),
-       ('a_objid', np.float32, 1)])
-    self.i_vertex = 0
-    self.n_vertex = n_vertex
-    self.indices = []
-
-  def add_vertex(self, vertex, normal, color, objid):
-    self.data['a_position'][self.i_vertex,:] = vertex
-    self.data['a_normal'][self.i_vertex,:] = normal
-    self.data['a_color'][self.i_vertex,:] = color
-    self.data['a_objid'][self.i_vertex] = objid
-    self.i_vertex += 1
-
-  def vertex_buffer(self):
-    return gloo.VertexBuffer(self.data) 
-  
-  def index_buffer(self):
-    return gloo.IndexBuffer(self.indices) 
-
-  def setup_next_strip(self, indices):
-    """
-    Add triangular indices relative to self.i_vertex_in_buffer
-    """
-    indices = [i + self.i_vertex for i in indices]
-    self.indices.extend(indices)
-
 
 
 

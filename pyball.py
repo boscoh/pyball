@@ -7,7 +7,6 @@ from vispy import gloo, scene
 from vispy import app
 from vispy.util.transforms import perspective, translate, rotate
 from vispy.scene.visuals import Text
-from vispy.scene.transforms import STTransform
 
 from pprint import pprint
 import math
@@ -374,11 +373,8 @@ class Camera():
     self.zoom = 40
     self.center = (0, 0, 0, 0)
     translate(self.view, 0, 0, -self.zoom)
-    self.theta = 0
-    self.phi = 0
-    self.psi = 0
     self.is_fog = True
-    self.fog_near = 1
+    self.fog_near = -1
     self.fog_far = 50
     self.fog_color = [0, 0, 0]
 
@@ -386,18 +382,18 @@ class Camera():
     self.projection = perspective(
         25.0, 
         self.width / float(self.height), 
-        max(0.5, -50.0+self.zoom), 
+        1.0, 
         50.0+self.zoom)
+    self.fog_near = self.zoom
+    self.fog_far = 20.0 + self.zoom
 
   def resize(self, width, height):
     self.width, self.height = width, height
-    gloo.set_viewport(0, 0, width, height)
+    self.size = [width, height]
     self.recalc_projection()
 
   def recalc_model(self):
-    self.model = identity()
-    translate(self.model, -self.center[0], -self.center[1], -self.center[2])
-    self.model = np.dot(self.model, self.rotation)
+    self.model = np.dot(self.translation, self.rotation)
       
   def rotate(self, phi_diff, theta_diff, psi_diff):
     rotate(self.rotation, phi_diff, 0, 1, 0)
@@ -406,15 +402,50 @@ class Camera():
     self.recalc_model()
 
   def rezoom(self, zoom_diff):
-    translate(self.view, 0, 0, +self.zoom)
-    self.zoom = self.zoom + zoom_diff
+    self.zoom = max(10, self.zoom + zoom_diff)
+    self.view = identity()
     translate(self.view, 0, 0, -self.zoom)
     self.recalc_projection()
 
   def set_center(self, center):
     self.center = center
+    self.translation = identity()
+    translate(self.translation, -self.center[0], -self.center[1], -self.center[2])
     self.recalc_model()
 
+
+
+class TriangleStore:
+  def __init__(self, n_vertex):
+    self.data = np.zeros(
+      n_vertex, 
+      [('a_position', np.float32, 3),
+       ('a_normal', np.float32, 3),
+       ('a_color', np.float32, 3),
+       ('a_objid', np.float32, 1)])
+    self.i_vertex = 0
+    self.n_vertex = n_vertex
+    self.indices = []
+
+  def add_vertex(self, vertex, normal, color, objid):
+    self.data['a_position'][self.i_vertex,:] = vertex
+    self.data['a_normal'][self.i_vertex,:] = normal
+    self.data['a_color'][self.i_vertex,:] = color
+    self.data['a_objid'][self.i_vertex] = objid
+    self.i_vertex += 1
+
+  def vertex_buffer(self):
+    return gloo.VertexBuffer(self.data) 
+  
+  def index_buffer(self):
+    return gloo.IndexBuffer(self.indices) 
+
+  def setup_next_strip(self, indices):
+    """
+    Add triangular indices relative to self.i_vertex_in_buffer
+    """
+    indices = [i + self.i_vertex for i in indices]
+    self.indices.extend(indices)
 
 
 def group(lst, n):
@@ -433,7 +464,7 @@ def make_calpha_arrow_mesh(
   arrow = render.Arrow(length, width, thickness)
 
   n_point = len(trace.points)
-  triangle_store = render.TriangleStore(n_point*len(arrow.indices))
+  triangle_store = TriangleStore(n_point*len(arrow.indices))
 
   for i_point in range(n_point):
 
@@ -462,7 +493,7 @@ def make_cylinder_trace_mesh(pieces, coil_detail=4, radius=0.3):
   cylinder = render.Cylinder(coil_detail)
 
   n_point = sum(len(piece.points) for piece in pieces)
-  triangle_store = render.TriangleStore(2 * n_point * cylinder.n_vertex)
+  triangle_store = TriangleStore(2 * n_point * cylinder.n_vertex)
 
   for piece in pieces:
     points = piece.points
@@ -534,7 +565,7 @@ def make_carton_mesh(
       j_point = i_point + 1
 
   n_vertex = sum(r.n_vertex for r in builders)
-  triangle_store = render.TriangleStore(n_vertex)
+  triangle_store = TriangleStore(n_vertex)
 
   for r in builders:
       r.build_triangles(triangle_store)
@@ -551,8 +582,8 @@ def make_ball_and_stick_mesh(
   cylinder = render.Cylinder(4)
 
   n_vertex = len(rendered_soup.draw_to_screen_atoms)*sphere.n_vertex
-  n_vertex += len(rendered_soup.bonds)*cylinder.n_vertex
-  triangle_store = render.TriangleStore(n_vertex)
+  n_vertex += 2*len(rendered_soup.bonds)*cylinder.n_vertex
+  triangle_store = TriangleStore(n_vertex)
 
   for atom in rendered_soup.draw_to_screen_atoms:
     triangle_store.setup_next_strip(sphere.indices)
@@ -562,17 +593,28 @@ def make_ball_and_stick_mesh(
           v3.transform(orientate, point) + atom.pos,
           point, # same as normal!
           atom.residue.color, 
-          atom.residue.objid)
+          atom.objid)
 
   for bond in rendered_soup.bonds:
-    orientate = cylinder.get_orientate(bond.tangent, bond.up, radius)
+    tangent = 0.5*bond.tangent
+
+    orientate = cylinder.get_orientate(tangent, bond.up, radius)
     triangle_store.setup_next_strip(cylinder.indices)
     for point, normal in zip(cylinder.points, cylinder.normals):
       triangle_store.add_vertex(
           v3.transform(orientate, point) + bond.atom1.pos,
           v3.transform(orientate, normal), 
           bond.atom1.residue.color, 
-          bond.atom1.residue.objid)
+          bond.atom1.objid)
+
+    orientate = cylinder.get_orientate(-tangent, bond.up, radius)
+    triangle_store.setup_next_strip(cylinder.indices)
+    for point, normal in zip(cylinder.points, cylinder.normals):
+      triangle_store.add_vertex(
+          v3.transform(orientate, point) + bond.atom2.pos,
+          v3.transform(orientate, normal), 
+          bond.atom2.residue.color, 
+          bond.atom2.objid)
 
   return triangle_store.index_buffer(), triangle_store.vertex_buffer()
 
@@ -702,13 +744,40 @@ def get_polar(x, y):
 
 
 
-class MolecularViewerCanvas(scene.SceneCanvas):
+class Console():
+  def __init__(self, size, init_str=''):
+    self.text = Text(
+          init_str, bold=True, color=(0.7, 1.0, 0.3, 1.),
+          font_size=10, pos=(0, 0), anchor_y='bottom',
+          anchor_x='center')
+    self.size = size
+    self.x = 0
+    self.y = 0
+
+  def draw(self):
+      viewport = gloo.get_parameter('viewport')
+      size = viewport[2:4]
+      x_view_offset = (size[0] - self.size[0]) // 2
+      y_view_offset = (size[1] - self.size[1]) // 2
+      x =  self.x +      x_view_offset
+      y =  self.y + 15 + y_view_offset
+      gloo.set_viewport(x, y, self.size[0], self.size[1])
+      self.text.pos = (0, 0)
+      self.text.draw()
+
+
+class MolecularViewerCanvas(app.Canvas):
 
     def __init__(self, fname):
       app.Canvas.__init__(
           self, title='Molecular viewer')
 
-      self.size = 500, 300
+      # self.size is not updated until after __init__ is 
+      # finished so must use the local `size` variable during
+      # __init__
+      size = 500, 300
+      self.size = size
+      gloo.set_viewport(0, 0, size[0], size[1])
 
       self.program = gloo.Program(semilight_vertex, semilight_fragment)
       self.picking_program = gloo.Program(picking_vertex, picking_fragment)
@@ -733,17 +802,18 @@ class MolecularViewerCanvas(scene.SceneCanvas):
       self.ballstick_index_buffer, self.ballstick_vertex_buffer = \
           make_ball_and_stick_mesh(rendered_soup)
 
+      self.draw_style = 'sidechains'
+
       self.camera = Camera()
-      self.camera.resize(*self.size)
+      self.camera.resize(*size)
       self.camera.set_center(rendered_soup.center)
       self.camera.rezoom(2.0/rendered_soup.scale)
 
       self.new_camera = Camera()
       self.n_step_animate = 0 
 
-      self.text = Text('X', bold=True, color=(1., 1., 1., 1.))
-      transform = STTransform((1., 1., 1.))
-      self.text._program.vert['transform'] = transform.shader_map()
+      self.console = Console(size)
+      self.text = self.console.text
 
       self.timer = app.Timer(1.0 / 30)  # change rendering speed here
       self.timer.connect(self.on_timer)
@@ -752,8 +822,20 @@ class MolecularViewerCanvas(scene.SceneCanvas):
     def on_initialize(self, event):
       gloo.set_state(depth_test=True, clear_color='black')
 
+    def draw_buffers(self, program):
+      if self.draw_style == 'sidechains':
+        program.bind(self.ballstick_vertex_buffer)
+        program.draw('triangles', self.ballstick_index_buffer)
+
+      program.bind(self.arrow_buffer)
+      program.draw('triangles')
+
+      program.bind(self.cartoon_vertex_buffer)
+      program.draw('triangles', self.cartoon_index_buffer)
+
     def on_draw(self, event):
       gloo.clear()
+      gloo.set_viewport(0, 0, self.camera.width, self.camera.height)
 
       self.program['u_light_position'] = [100., 100., 500.]
       self.program['u_is_lighting'] = True
@@ -762,42 +844,50 @@ class MolecularViewerCanvas(scene.SceneCanvas):
       self.program['u_view'] = self.camera.view
       self.program['u_projection'] = self.camera.projection
       self.program['u_is_fog'] = self.camera.is_fog
-      self.program['u_fog_far'] = self.camera.zoom + 50 
-      self.program['u_fog_near'] = 1
+      self.program['u_fog_far'] = self.camera.fog_far
+      self.program['u_fog_near'] = self.camera.fog_near
       self.program['u_fog_color'] = self.camera.fog_color
 
-      # self.program.bind(self.cylinder_vertex_buffer)
-      # self.program.draw('triangles', self.cylinder_index_buffer)
+      gl.glEnable(gl.GL_BLEND)
+      gl.glEnable(gl.GL_DEPTH_TEST)
+      gl.glDepthFunc(gl.GL_LEQUAL)
+      gl.glCullFace(gl.GL_FRONT)
+      gl.glEnable(gl.GL_CULL_FACE)
 
-      self.program.bind(self.arrow_buffer)
-      self.program.draw('triangles')
+      self.draw_buffers(self.program)
 
-      self.program.bind(self.ballstick_vertex_buffer)
-      self.program.draw('triangles', self.ballstick_index_buffer)
+      gl.glDisable(gl.GL_BLEND)
+      gl.glDisable(gl.GL_DEPTH_TEST)
+      gl.glDisable(gl.GL_CULL_FACE)
 
-      self.program.bind(self.cartoon_vertex_buffer)
-      self.program.draw('triangles', self.cartoon_index_buffer)
+      self.console.draw()
+
+      self.last_draw = 'screen'
 
       self.update()
 
-
-
-    def pick(self, x, y):
+    def pick_draw(self):
+      gloo.set_viewport(0, 0, self.camera.width, self.camera.height)
       gl.glDisable(gl.GL_BLEND)
-      gl.glClearColor(0.0, 0.0, 0.0, 0.0)
-      gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+      gl.glEnable(gl.GL_DEPTH_TEST)
+      gl.glDepthFunc(gl.GL_LEQUAL)
       gl.glCullFace(gl.GL_FRONT)
       gl.glEnable(gl.GL_CULL_FACE)
+
+      gl.glClearColor(0.0, 0.0, 0.0, 0.0)
+      gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 
       self.picking_program['u_model'] = self.camera.model
       self.picking_program['u_view'] = self.camera.view
       self.picking_program['u_projection'] = self.camera.projection
 
-      self.picking_program.bind(self.arrow_buffer)
-      self.picking_program.draw('triangles')
+      self.draw_buffers(self.picking_program)
 
-      self.picking_program.bind(self.cartoon_vertex_buffer)
-      self.picking_program.draw('triangles', self.cartoon_index_buffer)
+      self.last_draw = 'pick'
+
+    def pick(self, x, y):
+      if self.last_draw != 'pick':
+        self.pick_draw()
 
       pixels = (c_float*4)()
       y_screen = self.size[1] - y # screen and OpenGL y coord flipped
@@ -813,6 +903,11 @@ class MolecularViewerCanvas(scene.SceneCanvas):
           self.timer.stop()
         else:
           self.timer.start()
+      if event.text == 's':
+        if self.draw_style == 'sidechains':
+          self.draw_style = 'no-sidechains'
+        else:
+          self.draw_style = 'sidechains'
 
     def on_timer(self, event):
       if self.n_step_animate > 0:
@@ -836,9 +931,23 @@ class MolecularViewerCanvas(scene.SceneCanvas):
         atom = self.rendered_soup.atom_by_objid[objid]
         self.new_camera.center = atom.pos
         self.n_step_animate = 10
-        print "%s-%s-%s" % (atom.res_tag(), atom.res_type, atom.type)
 
     def on_mouse_move(self, event):
+      objid = self.pick(*event.pos)
+      if objid <= 0:
+        self.console.text.text = ''
+      if objid > 0:
+        atom = self.rendered_soup.atom_by_objid[objid]
+        s = "%s-%s-%s" % (atom.res_tag(), atom.res_type, atom.type)
+        self.console.text.text = s
+        pos = np.append(atom.pos[:], [1], 0)
+        pos = np.dot(pos, self.camera.model)
+        pos = np.dot(pos, self.camera.view)
+        pos = np.dot(pos, self.camera.projection)
+        pos = pos/pos[3]
+        self.console.x = pos[0]*self.size[0]*0.5
+        self.console.y = pos[1]*self.size[1]*0.5
+
       if event.button == 1:
         x_diff = event.pos[0] - self.save_event.pos[0]
         y_diff = event.pos[1] - self.save_event.pos[1]
