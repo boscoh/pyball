@@ -208,7 +208,7 @@ class Trace:
             self.ups = np.zeros((n,3), dtype=np.float32)
             self.tangents = np.zeros((n,3), dtype=np.float32)
             self.objids = np.zeros(n, dtype=np.float32)
-            self.residues = [None for i in range(n)]
+            self.residue_indices = [None for i in range(n)]
 
     def get_prev_point(self, i):
         if i > 0:
@@ -241,7 +241,7 @@ class SubTrace(Trace):
         self.ups = trace.ups[i:j]
         self.tangents = trace.tangents[i:j]
         self.objids = trace.objids[i:j]
-        self.residues = trace.residues[i:j]
+        self.residue_indices = trace.residue_indices[i:j]
 
 
 def catmull_rom_spline(t, p1, p2, p3, p4):
@@ -423,7 +423,7 @@ class RenderedSoup():
       c = residue.atom('C')
       o = residue.atom('O')
       residue.i = i
-      self.trace.residues[i] = residue
+      self.trace.residue_indices[i] = residue._res_idx
       self.trace.objids[i] = residue.objid
       self.trace.points[i] = ca.pos
       self.trace.ups[i] = c.pos - o.pos
@@ -446,51 +446,67 @@ class RenderedSoup():
     print("Find H-Bonds...")
     vertices = []
     atoms = []
-    for residue in self.trace.residues:
-      if residue.has_atom('O'):
-        o_atom = residue.atom('O')
-        atoms.append(o_atom)
-        vertices.append(o_atom.pos)
-      if residue.has_atom('N'):
-        n_atom = residue.atom('N')
-        atoms.append(n_atom)
-        vertices.append(n_atom.pos)
-      residue.hb_partners = []
+    for res_idx in self.trace.residue_indices:
+      if res_idx is None:
+        continue
+      if self.has_atom_in_residue_idx(res_idx, 'O'):
+        o_atom_idx = self.find_atom_in_residue_idx(res_idx, 'O')
+        atoms.append(o_atom_idx)
+        vertices.append(self.soup.get_atom_proxy(o_atom_idx).pos)
+      if self.has_atom_in_residue_idx(res_idx, 'N'):
+        n_atom_idx = self.find_atom_in_residue_idx(res_idx, 'N')
+        atoms.append(n_atom_idx)
+        vertices.append(self.soup.get_atom_proxy(n_atom_idx).pos)
+      self.residue_hb_partners[res_idx] = []
     d = 3.5
     for i, j in SpaceHash(vertices).close_pairs():
-      atom1 = atoms[i]
-      atom2 = atoms[j]
-      if atom1.type == atom2.type:
+      atom1_idx = atoms[i]
+      atom2_idx = atoms[j]
+      atom1_proxy = self.soup.get_atom_proxy(atom1_idx)
+      atom2_proxy = self.soup.get_atom_proxy(atom2_idx)
+      if atom1_proxy.atom_type == atom2_proxy.atom_type:
         continue
-      if v3.pos_distance(atom1.pos, atom2.pos) < d:
-        res1 = atom1.residue
-        res2 = atom2.residue
-        res1.hb_partners.append(res2.i)
-        res2.hb_partners.append(res1.i)
+      if v3.pos_distance(atom1_proxy.pos, atom2_proxy.pos) < d:
+        res1_idx = self.atom_residue_idx.get(atom1_idx)
+        res2_idx = self.atom_residue_idx.get(atom2_idx)
+        if res1_idx is not None and res2_idx is not None:
+          i1 = self.residue_i.get(res1_idx)
+          i2 = self.residue_i.get(res2_idx)
+          if i1 is not None and i2 is not None:
+            self.residue_hb_partners[res1_idx].append(i2)
+            self.residue_hb_partners[res2_idx].append(i1)
 
   def find_ss_by_bb_hbonds(self):
 
     def is_hb(i_res, j_res):
-      if not (0 <= i_res <= len(self.trace.residues) - 1):
+      if not (0 <= i_res <= len(self.trace.residue_indices) - 1):
         return False
-      return j_res in self.trace.residues[i_res].hb_partners
+      res_idx = self.trace.residue_indices[i_res]
+      if res_idx is None:
+        return False
+      return j_res in self.residue_hb_partners.get(res_idx, [])
 
     print("Find Secondary Structure...")
-    for res in self.trace.residues:
-      res.ss = 'C'
+    for res_idx in self.trace.residue_indices:
+      if res_idx is not None:
+        self.residue_ss[res_idx] = 'C'
 
-    n_res = len(self.trace.residues)
+    n_res = len(self.trace.residue_indices)
     for i_res1 in range(n_res):
 
       # alpha-helix
       if is_hb(i_res1, i_res1+4) and is_hb(i_res1+1, i_res1+5):
         for i_res in range(i_res1+1, i_res1+5):
-          self.trace.residues[i_res].ss = 'H'
+          res_idx = self.trace.residue_indices[i_res]
+          if res_idx is not None:
+            self.residue_ss[res_idx] = 'H'
 
       # 3-10 helix
       if is_hb(i_res1, i_res1+3) and is_hb(i_res1+1, i_res1+4):
         for i_res in range(i_res1+1, i_res1+4):
-          self.trace.residues[i_res].ss = 'H'
+          res_idx = self.trace.residue_indices[i_res]
+          if res_idx is not None:
+            self.residue_ss[res_idx] = 'H'
 
       for i_res2 in range(n_res):
         if abs(i_res1-i_res2) > 5:
@@ -514,7 +530,9 @@ class RenderedSoup():
                   [i_res1+2, i_res1+1, i_res1, i_res2-2, i_res2-1, i_res2])
 
             for i_res in beta_residues:
-              self.trace.residues[i_res].ss = 'E' 
+              res_idx = self.trace.residue_indices[i_res]
+              if res_idx is not None:
+                self.residue_ss[res_idx] = 'E' 
 
     color_by_ss = {
       '-': (0.5, 0.5, 0.5),
@@ -522,8 +540,10 @@ class RenderedSoup():
       'H': (0.8, 0.4, 0.4),
       'E': (0.4, 0.4, 0.8)
     }
-    for residue in self.trace.residues:
-      residue.color = color_by_ss[residue.ss]
+    for res_idx in self.trace.residue_indices:
+      if res_idx is not None:
+        ss = self.residue_ss.get(res_idx, 'C')
+        self.residue_color[res_idx] = color_by_ss[ss]
 
   def find_pieces(self, cutoff=5.5):
 
@@ -728,11 +748,13 @@ def make_calpha_arrow_mesh(
       normal = v3.cross_product_vec(points[1] - points[0], points[0] - points[2])
       normal = np.dot(orientate[:3,:3], normal)  # Matrix-vector multiply with numpy
 
+      res_idx = trace.residue_indices[i_point]
+      color = rendered_soup.residue_color.get(res_idx, [0.4, 1.0, 0.4]) if res_idx is not None else [0.4, 1.0, 0.4]
       for point in points:
         triangle_store.add_vertex(
           np.dot(orientate[:3,:3], point) + trace.points[i_point],
           normal, 
-          trace.residues[i_point].color, 
+          color, 
           trace.objids[i_point])
 
   return triangle_store.vertex_buffer()
@@ -752,6 +774,11 @@ def make_cylinder_trace_mesh(pieces, coil_detail=4, radius=0.3):
 
       tangent = 0.5*(points[i_point+1] - points[i_point])
 
+      res_idx1 = piece.residue_indices[i_point]
+      res_idx2 = piece.residue_indices[i_point+1]
+      color1 = rendered_soup.residue_color.get(res_idx1, [0.4, 1.0, 0.4]) if res_idx1 is not None else [0.4, 1.0, 0.4]
+      color2 = rendered_soup.residue_color.get(res_idx2, [0.4, 1.0, 0.4]) if res_idx2 is not None else [0.4, 1.0, 0.4]
+      
       up = piece.ups[i_point] + piece.ups[i_point+1]
 
       orientate = cylinder.get_orientate(tangent, up, radius)
@@ -760,7 +787,7 @@ def make_cylinder_trace_mesh(pieces, coil_detail=4, radius=0.3):
         triangle_store.add_vertex(
             np.dot(orientate[:3,:3], point) + points[i_point],
             np.dot(orientate[:3,:3], normal), 
-            piece.residues[i_point].color, 
+            color1, 
             piece.objids[i_point])
 
       orientate = cylinder.get_orientate(-tangent, up, radius)
@@ -769,7 +796,7 @@ def make_cylinder_trace_mesh(pieces, coil_detail=4, radius=0.3):
         triangle_store.add_vertex(
             np.dot(orientate[:3,:3], point) + points[i_point+1],
             np.dot(orientate[:3,:3], normal), 
-            piece.residues[i_point+1].color, 
+            color2, 
             piece.objids[i_point+1])
 
   return triangle_store.index_buffer(), triangle_store.vertex_buffer()
@@ -792,12 +819,17 @@ def make_carton_mesh(
     j_point = 1
     while i_point < n_point:
 
-      ss = piece.residues[i_point].ss
-      color = piece.residues[i_point].color
+      res_idx = piece.residue_indices[i_point]
+      ss = rendered_soup.residue_ss.get(res_idx, 'C') if res_idx is not None else 'C'
+      color = rendered_soup.residue_color.get(res_idx, [0.4, 1.0, 0.4]) if res_idx is not None else [0.4, 1.0, 0.4]
       color = [min(1.0, 1.2*c) for c in color]
       profile = circle if ss == "C" else rect  
 
-      while j_point < n_point and piece.residues[j_point].ss == ss:
+      while j_point < n_point:
+        res_idx_j = piece.residue_indices[j_point]
+        ss_j = rendered_soup.residue_ss.get(res_idx_j, 'C') if res_idx_j is not None else 'C'
+        if ss_j != ss:
+          break
         j_point += 1
 
       i_spline = 2*i_point*spline_detail - spline_detail
