@@ -35,17 +35,17 @@ def main():
     print("=" * 70)
 
     tests = [
-        ("Import pyball module", "python -c 'import pyball'"),
-        ("Import render module", "python -c 'import render'"),
+        ("Import pyball package", "python -c 'import pyball'"),
+        ("Import MolecularViewerCanvas", "python -c 'from pyball import MolecularViewerCanvas'"),
         (
             "Load PDB with pdbstruct",
             'python -c \'from pdbstruct import parse; s = parse.load_soup("1be9.pdb"); print(f"Loaded {s.get_atom_count()} atoms")\'',
         ),
         (
-            "Test RenderedSoup with indices",
+            "Test RenderedSoup with package",
             'python -c \'from pdbstruct import parse; s = parse.load_soup("1be9.pdb"); from pyball import RenderedSoup; rs = RenderedSoup(s); print("RenderedSoup works with", s.get_atom_count(), "atoms")\'',
         ),
-        ("Run pyball on 1be9.pdb", "timeout 5 python pyball.py 1be9.pdb 2>&1 | head -20"),
+        ("Run pyball module on 1be9.pdb", "timeout 5 python -m pyball 1be9.pdb 2>&1 | head -20"),
     ]
 
     passed = 0

@@ -35,3 +35,8 @@ history/
 # Legacy code kept for reference
 archive/
 pdbremix/
+
+# Legacy single-file version (now a package)
+# pyball.py
+# render.py  
+# spacehash.py

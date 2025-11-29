@@ -10,5 +10,5 @@ if [ -z "$1" ]; then
 fi
 
 echo "Running pyball on $1..."
-uv run python pyball.py "$1"
+uv run python -m pyball "$1"
 
