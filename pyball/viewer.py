@@ -8,9 +8,8 @@ rendering modes, and debug console overlay.
 import OpenGL.GL as gl
 from pdbstruct import parse
 from vispy import app
-from vispy.scene.visuals import Text
-
 from vispy.gloo import Program
+from vispy.scene.visuals import Text
 
 from .rendering import (
     Camera,
@@ -92,6 +91,29 @@ class MolecularViewerCanvas(app.Canvas):
         self.ballstick_index_buffer, self.ballstick_vertex_buffer = make_ball_and_stick_mesh(
             rendered_soup
         )
+
+        self.draw_style = "sidechains"
+        self.camera = Camera()
+        self.camera.resize(*size)
+        self.camera.set_center(rendered_soup.center)
+        self.camera.rezoom(2.0 / rendered_soup.scale)
+        self.new_camera = Camera()
+        self.n_step_animate = 0
+        self.console = Console(size)
+        self.text = self.console.text
+        self.timer = app.Timer(1.0 / 30)
+        self.timer.connect(self.on_timer)
+        self.timer.start()
+
+        print(
+            f"Camera center: {rendered_soup.center}, scale: {rendered_soup.scale}, zoom: {self.camera.zoom}"
+        )
+
+        gl.glEnable(gl.GL_DEPTH_TEST)
+        gl.glDepthFunc(gl.GL_LESS)
+        gl.glEnable(gl.GL_BLEND)
+        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+        gl.glClearColor(0.0, 0.0, 0.0, 1.0)
 
     def on_key_press(self, event):
         if event.text == " ":

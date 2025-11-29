@@ -14,7 +14,7 @@ from pdbstruct import vector3d as v3
 from vispy import gloo
 from vispy.util.transforms import perspective, rotate, translate
 
-from . import render
+from . import geometry
 from .structures import SplineTrace, SubTrace
 
 
@@ -127,7 +127,7 @@ def make_calpha_arrow_mesh(rendered_soup, trace, length=0.7, width=0.35, thickne
     Generate arrows at each CA position pointing along backbone direction.
     Useful for quick visualization of chain direction and secondary structure.
     """
-    arrow = render.Arrow(length, width, thickness)
+    arrow = geometry.Arrow(length, width, thickness)
 
     n_point = len(trace.points)
     triangle_store = TriangleStore(n_point * len(arrow.indices))
@@ -143,7 +143,7 @@ def make_calpha_arrow_mesh(rendered_soup, trace, length=0.7, width=0.35, thickne
 
             res_idx = trace.residue_indices[i_point]
             color = (
-                rendered_soup.residue_color.get(res_idx, [0.4, 1.0, 0.4])
+                rendered_soup.color_by_residue_idx.get(res_idx, [0.4, 1.0, 0.4])
                 if res_idx is not None
                 else [0.4, 1.0, 0.4]
             )
@@ -164,7 +164,7 @@ def make_cylinder_trace_mesh(rendered_soup, pieces, coil_detail=4, radius=0.3):
     Creates cylindrical segments connecting consecutive CA positions, colored by
     residue secondary structure. Faster to render than cartoons.
     """
-    cylinder = render.Cylinder(coil_detail)
+    cylinder = geometry.Cylinder(coil_detail)
 
     n_point = sum(len(piece.points) for piece in pieces)
     triangle_store = TriangleStore(2 * n_point * cylinder.n_vertex)
@@ -178,12 +178,12 @@ def make_cylinder_trace_mesh(rendered_soup, pieces, coil_detail=4, radius=0.3):
             res_idx1 = piece.residue_indices[i_point]
             res_idx2 = piece.residue_indices[i_point + 1]
             color1 = (
-                rendered_soup.residue_color.get(res_idx1, [0.4, 1.0, 0.4])
+                rendered_soup.color_by_residue_idx.get(res_idx1, [0.4, 1.0, 0.4])
                 if res_idx1 is not None
                 else [0.4, 1.0, 0.4]
             )
             color2 = (
-                rendered_soup.residue_color.get(res_idx2, [0.4, 1.0, 0.4])
+                rendered_soup.color_by_residue_idx.get(res_idx2, [0.4, 1.0, 0.4])
                 if res_idx2 is not None
                 else [0.4, 1.0, 0.4]
             )
@@ -224,8 +224,8 @@ def make_carton_mesh(
     - Circles (tubes) for coils
     Segments change geometry at SS boundaries for visual distinction.
     """
-    rect = render.RectProfile(width, 0.15)
-    circle = render.CircleProfile(coil_detail, 0.3)
+    rect = geometry.RectProfile(width, 0.15)
+    circle = geometry.CircleProfile(coil_detail, 0.3)
 
     builders = []
     for piece in pieces:
@@ -237,9 +237,9 @@ def make_carton_mesh(
         j_point = 1
         while i_point < n_point:
             res_idx = piece.residue_indices[i_point]
-            ss = rendered_soup.residue_ss.get(res_idx, "C") if res_idx is not None else "C"
+            ss = rendered_soup.ss_by_residue_idx.get(res_idx, "C") if res_idx is not None else "C"
             color = (
-                rendered_soup.residue_color.get(res_idx, [0.4, 1.0, 0.4])
+                rendered_soup.color_by_residue_idx.get(res_idx, [0.4, 1.0, 0.4])
                 if res_idx is not None
                 else [0.4, 1.0, 0.4]
             )
@@ -249,7 +249,9 @@ def make_carton_mesh(
             while j_point < n_point:
                 res_idx_j = piece.residue_indices[j_point]
                 ss_j = (
-                    rendered_soup.residue_ss.get(res_idx_j, "C") if res_idx_j is not None else "C"
+                    rendered_soup.ss_by_residue_idx.get(res_idx_j, "C")
+                    if res_idx_j is not None
+                    else "C"
                 )
                 if ss_j != ss:
                     break
@@ -264,7 +266,7 @@ def make_carton_mesh(
 
             sub_spline = SubTrace(spline, i_spline, j_spline)
 
-            builders.append(render.TubeBuilder(sub_spline, profile, color))
+            builders.append(geometry.TubeBuilder(sub_spline, profile, color))
 
             i_point = j_point
             j_point = i_point + 1
@@ -286,8 +288,8 @@ def make_ball_and_stick_mesh(rendered_soup, sphere_stack=5, sphere_arc=5, tube_a
     Bonds detected via spatial proximity (<2Å between non-H atoms). Each atom/bond
     half colored by its residue's secondary structure.
     """
-    sphere = render.Sphere(sphere_stack, sphere_arc)
-    cylinder = render.Cylinder(4)
+    sphere = geometry.Sphere(sphere_stack, sphere_arc)
+    cylinder = geometry.Cylinder(4)
 
     n_vertex = len(rendered_soup.draw_to_screen_atoms) * sphere.n_vertex
     n_vertex += 2 * len(rendered_soup.bonds) * cylinder.n_vertex
@@ -295,13 +297,13 @@ def make_ball_and_stick_mesh(rendered_soup, sphere_stack=5, sphere_arc=5, tube_a
 
     for atom_idx in rendered_soup.draw_to_screen_atoms:
         atom_proxy = rendered_soup.soup.get_atom_proxy(atom_idx)
-        res_idx = rendered_soup.atom_residue_idx.get(atom_idx)
+        res_idx = rendered_soup.residue_idx_by_atom_idx.get(atom_idx)
         color = (
-            rendered_soup.residue_color.get(res_idx, [0.4, 1.0, 0.4])
+            rendered_soup.color_by_residue_idx.get(res_idx, [0.4, 1.0, 0.4])
             if res_idx is not None
             else [0.4, 1.0, 0.4]
         )
-        objid = rendered_soup.atom_objids.get(atom_idx, atom_idx)
+        objid = rendered_soup.objid_by_atom_idx.get(atom_idx, atom_idx)
 
         triangle_store.setup_next_strip(sphere.indices)
         orientate = sphere.get_orientate(radius)
@@ -317,20 +319,20 @@ def make_ball_and_stick_mesh(rendered_soup, sphere_stack=5, sphere_arc=5, tube_a
         atom1_proxy = rendered_soup.soup.get_atom_proxy(bond.atom1_idx)
         atom2_proxy = rendered_soup.soup.get_atom_proxy(bond.atom2_idx)
 
-        res1_idx = rendered_soup.atom_residue_idx.get(bond.atom1_idx)
-        res2_idx = rendered_soup.atom_residue_idx.get(bond.atom2_idx)
+        res1_idx = rendered_soup.residue_idx_by_atom_idx.get(bond.atom1_idx)
+        res2_idx = rendered_soup.residue_idx_by_atom_idx.get(bond.atom2_idx)
         color1 = (
-            rendered_soup.residue_color.get(res1_idx, [0.4, 1.0, 0.4])
+            rendered_soup.color_by_residue_idx.get(res1_idx, [0.4, 1.0, 0.4])
             if res1_idx is not None
             else [0.4, 1.0, 0.4]
         )
         color2 = (
-            rendered_soup.residue_color.get(res2_idx, [0.4, 1.0, 0.4])
+            rendered_soup.color_by_residue_idx.get(res2_idx, [0.4, 1.0, 0.4])
             if res2_idx is not None
             else [0.4, 1.0, 0.4]
         )
-        objid1 = rendered_soup.atom_objids.get(bond.atom1_idx, bond.atom1_idx)
-        objid2 = rendered_soup.atom_objids.get(bond.atom2_idx, bond.atom2_idx)
+        objid1 = rendered_soup.objid_by_atom_idx.get(bond.atom1_idx, bond.atom1_idx)
+        objid2 = rendered_soup.objid_by_atom_idx.get(bond.atom2_idx, bond.atom2_idx)
 
         tangent = bond.tangent.scale(0.5)
 

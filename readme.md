@@ -45,10 +45,13 @@ pip install git+https://github.com/boscoh/pdbstruct.git
 
 ```bash
 # With uv (recommended)
-uv run python pyball.py 1cph.pdb
+uv run python -m pyball 1cph.pdb
 
 # Or with plain python
-python pyball.py 1cph.pdb
+python -m pyball 1cph.pdb
+
+# Using the convenience script
+./scripts/run.sh 1cph.pdb
 ```
 
 ## Controls

@@ -54,4 +54,4 @@ select = ["E", "F", "I", "W"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["pyball", "render", "spacehash"]
+known-first-party = ["pyball", "geometry"]

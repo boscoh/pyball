@@ -35,7 +35,7 @@ Thank you for your interest in contributing to PyBall! This document provides gu
 
 4. **Try the viewer**
    ```bash
-   uv run python pyball.py 1be9.pdb
+   uv run python -m pyball 1be9.pdb
    ```
 
 ## Issue Tracking with Beads
@@ -102,8 +102,8 @@ import numpy as np
 from vispy import app, scene
 
 # Local
-import render
-from spacehash import SpaceHash
+from pyball import geometry
+from pdbstruct.spacehash import SpaceHash
 ```
 
 ### Naming Conventions
@@ -123,7 +123,7 @@ uv run python test_migration.py
 
 # Individual module tests
 uv run python -c "import pyball"
-uv run python -c "import render"
+uv run python -c "from pyball import geometry"
 ```
 
 ### Writing Tests
@@ -192,9 +192,10 @@ bd close <issue-id> --reason "Completed"
 
 ### Core Modules
 
-- **`pyball.py`** - Main application, event handling, UI
-- **`render.py`** - Mesh generation algorithms
-- **`spacehash.py`** - Spatial indexing for proximity detection
+- **`pyball/viewer.py`** - Main application, event handling, UI
+- **`pyball/structures.py`** - Data structures (Trace, Bond, RenderedSoup)
+- **`pyball/rendering.py`** - Camera, shaders, mesh generation functions
+- **`pyball/geometry.py`** - Geometric primitives (Arrow, Sphere, Cylinder)
 
 ### Key Technologies
 
@@ -207,11 +208,12 @@ bd close <issue-id> --reason "Completed"
 
 #### Adding a New Rendering Mode
 
-1. Add mesh generation function in `render.py`
-2. Add keyboard shortcut in `pyball.py`
-3. Update docstrings and README
-4. Add tests
-5. Update issue tracker: `bd close <id>`
+1. Add geometric primitive in `pyball/geometry.py` if needed
+2. Add mesh generation function in `pyball/rendering.py`
+3. Add keyboard shortcut in `pyball/viewer.py`
+4. Update docstrings and README
+5. Add tests
+6. Update issue tracker: `bd close <id>`
 
 #### Improving Performance
 

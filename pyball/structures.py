@@ -11,9 +11,8 @@ Contains classes for representing protein structures with rendering metadata:
 
 import numpy as np
 from pdbstruct import vector3d as v3
+from pdbstruct.spacehash import SpaceHash
 from pdbstruct.vector3d import Vector3d
-
-from .spacehash import SpaceHash
 
 backbone_atoms = ["N", "CA", "C", "O"]
 
@@ -162,15 +161,15 @@ class RenderedSoup:
 
     def __init__(self, soup):
         self.soup = soup
-        self.atom_objids = {}
-        self.atom_by_objid = {}
-        self.atom_residue_idx = {}
+        self.objid_by_atom_idx = {}
+        self.atom_idx_by_objid = {}
+        self.residue_idx_by_atom_idx = {}
 
-        self.residue_objids = {}
-        self.residue_ss = {}
-        self.residue_color = {}
-        self.residue_i = {}
-        self.residue_hb_partners = {}
+        self.objid_by_residue_idx = {}
+        self.ss_by_residue_idx = {}
+        self.color_by_residue_idx = {}
+        self.trace_idx_by_residue_idx = {}
+        self.hb_partners_by_residue_idx = {}
 
         self.build_objids()
 
@@ -219,11 +218,11 @@ class RenderedSoup:
     def build_objids(self):
         for atom_idx in range(self.soup.get_atom_count()):
             objid = atom_idx
-            self.atom_objids[atom_idx] = objid
-            self.atom_by_objid[objid] = atom_idx
+            self.objid_by_atom_idx[atom_idx] = objid
+            self.atom_idx_by_objid[objid] = atom_idx
 
     def get_atom_by_objid(self, objid):
-        return self.atom_by_objid.get(objid)
+        return self.atom_idx_by_objid.get(objid)
 
     def build_trace(self):
         """
@@ -236,8 +235,8 @@ class RenderedSoup:
         """
         trace_res_indices = []
         for res_idx in self.iter_residues():
-            self.residue_ss[res_idx] = "-"
-            self.residue_color[res_idx] = [0.4, 1.0, 0.4]
+            self.ss_by_residue_idx[res_idx] = "-"
+            self.color_by_residue_idx[res_idx] = [0.4, 1.0, 0.4]
 
             if (
                 self.has_atom_in_residue_idx(res_idx, "CA")
@@ -246,21 +245,21 @@ class RenderedSoup:
             ):
                 ca_idx = self.find_atom_in_residue_idx(res_idx, "CA")
                 trace_res_indices.append(res_idx)
-                res_objid = self.atom_objids.get(ca_idx, ca_idx)
+                res_objid = self.objid_by_atom_idx.get(ca_idx, ca_idx)
             else:
                 res_proxy = self.soup.get_residue_proxy(res_idx)
                 atom_indices = res_proxy.get_atom_indices()
                 if atom_indices:
                     first_atom_idx = atom_indices[0]
-                    res_objid = self.atom_objids.get(first_atom_idx, first_atom_idx)
+                    res_objid = self.objid_by_atom_idx.get(first_atom_idx, first_atom_idx)
                 else:
                     res_objid = res_idx
 
-            self.residue_objids[res_idx] = res_objid
+            self.objid_by_residue_idx[res_idx] = res_objid
 
             res_proxy = self.soup.get_residue_proxy(res_idx)
             for atom_idx in res_proxy.get_atom_indices():
-                self.atom_residue_idx[atom_idx] = res_idx
+                self.residue_idx_by_atom_idx[atom_idx] = res_idx
 
         self.trace = Trace(len(trace_res_indices))
         for i, res_idx in enumerate(trace_res_indices):
@@ -268,9 +267,9 @@ class RenderedSoup:
             c_idx = self.find_atom_in_residue_idx(res_idx, "C")
             o_idx = self.find_atom_in_residue_idx(res_idx, "O")
 
-            self.residue_i[res_idx] = i
+            self.trace_idx_by_residue_idx[res_idx] = i
             self.trace.residue_indices[i] = res_idx
-            self.trace.objids[i] = self.residue_objids[res_idx]
+            self.trace.objids[i] = self.objid_by_residue_idx[res_idx]
             self.trace.points[i] = self.soup.get_atom_proxy(ca_idx).pos
             self.trace.ups[i] = (
                 self.soup.get_atom_proxy(c_idx).pos - self.soup.get_atom_proxy(o_idx).pos
@@ -307,7 +306,7 @@ class RenderedSoup:
                 n_atom_idx = self.find_atom_in_residue_idx(res_idx, "N")
                 atoms.append(n_atom_idx)
                 vertices.append(self.soup.get_atom_proxy(n_atom_idx).pos)
-            self.residue_hb_partners[res_idx] = []
+            self.hb_partners_by_residue_idx[res_idx] = []
         d = 3.5
         for i, j in SpaceHash(vertices).close_pairs():
             atom1_idx = atoms[i]
@@ -317,14 +316,14 @@ class RenderedSoup:
             if atom1_proxy.atom_type == atom2_proxy.atom_type:
                 continue
             if v3.pos_distance(atom1_proxy.pos, atom2_proxy.pos) < d:
-                res1_idx = self.atom_residue_idx.get(atom1_idx)
-                res2_idx = self.atom_residue_idx.get(atom2_idx)
+                res1_idx = self.residue_idx_by_atom_idx.get(atom1_idx)
+                res2_idx = self.residue_idx_by_atom_idx.get(atom2_idx)
                 if res1_idx is not None and res2_idx is not None:
-                    i1 = self.residue_i.get(res1_idx)
-                    i2 = self.residue_i.get(res2_idx)
+                    i1 = self.trace_idx_by_residue_idx.get(res1_idx)
+                    i2 = self.trace_idx_by_residue_idx.get(res2_idx)
                     if i1 is not None and i2 is not None:
-                        self.residue_hb_partners[res1_idx].append(i2)
-                        self.residue_hb_partners[res2_idx].append(i1)
+                        self.hb_partners_by_residue_idx[res1_idx].append(i2)
+                        self.hb_partners_by_residue_idx[res2_idx].append(i1)
 
     def find_ss_by_bb_hbonds(self):
         """
@@ -345,12 +344,12 @@ class RenderedSoup:
             res_idx = self.trace.residue_indices[i_res]
             if res_idx is None:
                 return False
-            return j_res in self.residue_hb_partners.get(res_idx, [])
+            return j_res in self.hb_partners_by_residue_idx.get(res_idx, [])
 
         print("Find Secondary Structure...")
         for res_idx in self.trace.residue_indices:
             if res_idx is not None:
-                self.residue_ss[res_idx] = "C"
+                self.ss_by_residue_idx[res_idx] = "C"
 
         n_res = len(self.trace.residue_indices)
         for i_res1 in range(n_res):
@@ -358,13 +357,13 @@ class RenderedSoup:
                 for i_res in range(i_res1 + 1, i_res1 + 5):
                     res_idx = self.trace.residue_indices[i_res]
                     if res_idx is not None:
-                        self.residue_ss[res_idx] = "H"
+                        self.ss_by_residue_idx[res_idx] = "H"
 
             if is_hb(i_res1, i_res1 + 3) and is_hb(i_res1 + 1, i_res1 + 4):
                 for i_res in range(i_res1 + 1, i_res1 + 4):
                     res_idx = self.trace.residue_indices[i_res]
                     if res_idx is not None:
-                        self.residue_ss[res_idx] = "H"
+                        self.ss_by_residue_idx[res_idx] = "H"
 
             for i_res2 in range(n_res):
                 if abs(i_res1 - i_res2) > 5:
@@ -392,7 +391,7 @@ class RenderedSoup:
                         for i_res in beta_residues:
                             res_idx = self.trace.residue_indices[i_res]
                             if res_idx is not None:
-                                self.residue_ss[res_idx] = "E"
+                                self.ss_by_residue_idx[res_idx] = "E"
 
         color_by_ss = {
             "-": (0.5, 0.5, 0.5),
@@ -402,8 +401,8 @@ class RenderedSoup:
         }
         for res_idx in self.trace.residue_indices:
             if res_idx is not None:
-                ss = self.residue_ss.get(res_idx, "C")
-                self.residue_color[res_idx] = color_by_ss[ss]
+                ss = self.ss_by_residue_idx.get(res_idx, "C")
+                self.color_by_residue_idx[res_idx] = color_by_ss[ss]
 
     def find_pieces(self, cutoff=5.5):
         """
