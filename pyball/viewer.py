@@ -119,6 +119,9 @@ class MolecularViewerCanvas(app.Canvas):
         gl.glDepthFunc(gl.GL_LESS)
         gl.glEnable(gl.GL_BLEND)
         gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+        gl.glEnable(gl.GL_CULL_FACE)
+        gl.glCullFace(gl.GL_BACK)
+        gl.glFrontFace(gl.GL_CCW)
         gl.glClearColor(0.0, 0.0, 0.0, 1.0)
 
     def on_key_press(self, event):

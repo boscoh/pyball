@@ -138,7 +138,7 @@ def make_calpha_arrow_mesh(rendered_soup, trace, length=0.7, width=0.35, thickne
         for indices in group(arrow.indices, 3):
             points = [arrow.vertices[i] for i in indices]
 
-            normal = v3.cross_product_vec(points[1] - points[0], points[0] - points[2])
+            normal = v3.cross_product_vec(points[1] - points[0], points[2] - points[0])
             normal = np.dot(orientate[:3, :3], normal)  # Matrix-vector multiply with numpy
 
             res_idx = trace.residue_indices[i_point]
