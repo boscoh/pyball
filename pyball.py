@@ -340,14 +340,14 @@ class RenderedSoup():
     self.find_ss_by_bb_hbonds()
   
   def iter_residues(self):
-    """Iterator over all residues (as wrappers)"""
+    """Iterator over all residue indices"""
     for i in range(self.soup.get_residue_count()):
-      yield ResidueWrapper(self.soup, i, self)
+      yield i
   
   def iter_atoms(self):
-    """Iterator over all atoms (as wrappers)"""
+    """Iterator over all atom indices"""
     for i in range(self.soup.get_atom_count()):
-      yield AtomWrapper(self.soup, i, self)
+      yield i
   
   def find_atom_in_residue_idx(self, res_idx, atom_type):
     """Find atom index of specific type in residue"""
@@ -361,17 +361,6 @@ class RenderedSoup():
     """Check if residue has atom of specific type"""
     return self.find_atom_in_residue_idx(res_idx, atom_type) is not None
   
-  def find_atom_in_residue(self, residue, atom_type):
-    """Find atom of specific type in residue wrapper, returns wrapper"""
-    if isinstance(residue, ResidueWrapper):
-      return residue.atom(atom_type)
-    return None
-  
-  def has_atom_in_residue(self, residue, atom_type):
-    """Check if residue wrapper has atom of specific type"""
-    if isinstance(residue, ResidueWrapper):
-      return residue.has_atom(atom_type)
-    return False
   
   def get_center(self, points):
     """Calculate center of points (Vector3d list or numpy array)"""
@@ -395,41 +384,50 @@ class RenderedSoup():
       self.atom_by_objid[objid] = atom_idx
   
   def get_atom_by_objid(self, objid):
-    """Get atom wrapper by objid"""
-    atom_idx = self.atom_by_objid.get(objid)
-    if atom_idx is not None:
-      return AtomWrapper(self.soup, atom_idx, self)
-    return None
+    """Get atom index by objid"""
+    return self.atom_by_objid.get(objid)
 
   def build_trace(self):
-    trace_residues = []
-    for residue in self.iter_residues():
-      residue.ss = '-'
-      residue.color = [0.4, 1.0, 0.4]
-      if residue.has_atom('CA') and residue.has_atom('C') and residue.has_atom('O'):
-        ca = residue.atom('CA')
-        trace_residues.append(residue)
-        res_objid = ca.objid
+    trace_res_indices = []
+    for res_idx in self.iter_residues():
+      self.residue_ss[res_idx] = '-'
+      self.residue_color[res_idx] = [0.4, 1.0, 0.4]
+      
+      if (self.has_atom_in_residue_idx(res_idx, 'CA') and 
+          self.has_atom_in_residue_idx(res_idx, 'C') and 
+          self.has_atom_in_residue_idx(res_idx, 'O')):
+        ca_idx = self.find_atom_in_residue_idx(res_idx, 'CA')
+        trace_res_indices.append(res_idx)
+        res_objid = self.atom_objids.get(ca_idx, ca_idx)
       else:
-        first_atom = list(residue.atoms())[0]
-        res_objid = first_atom.objid
-      residue.objid = res_objid
-      for atom in residue.atoms():
-        atom.residue = residue
+        res_proxy = self.soup.get_residue_proxy(res_idx)
+        atom_indices = res_proxy.get_atom_indices()
+        if atom_indices:
+          first_atom_idx = atom_indices[0]
+          res_objid = self.atom_objids.get(first_atom_idx, first_atom_idx)
+        else:
+          res_objid = res_idx
+      
+      self.residue_objids[res_idx] = res_objid
+      
+      res_proxy = self.soup.get_residue_proxy(res_idx)
+      for atom_idx in res_proxy.get_atom_indices():
+        self.atom_residue_idx[atom_idx] = res_idx
 
-    self.trace = Trace(len(trace_residues))
-    for i, residue in enumerate(trace_residues):
-      ca = residue.atom('CA')
-      c = residue.atom('C')
-      o = residue.atom('O')
-      residue.i = i
-      self.trace.residue_indices[i] = residue._res_idx
-      self.trace.objids[i] = residue.objid
-      self.trace.points[i] = ca.pos
-      self.trace.ups[i] = c.pos - o.pos
+    self.trace = Trace(len(trace_res_indices))
+    for i, res_idx in enumerate(trace_res_indices):
+      ca_idx = self.find_atom_in_residue_idx(res_idx, 'CA')
+      c_idx = self.find_atom_in_residue_idx(res_idx, 'C')
+      o_idx = self.find_atom_in_residue_idx(res_idx, 'O')
+      
+      self.residue_i[res_idx] = i
+      self.trace.residue_indices[i] = res_idx
+      self.trace.objids[i] = self.residue_objids[res_idx]
+      self.trace.points[i] = self.soup.get_atom_proxy(ca_idx).pos
+      self.trace.ups[i] = self.soup.get_atom_proxy(c_idx).pos - self.soup.get_atom_proxy(o_idx).pos
 
     # remove alternate conformation by looking for orphaned atoms
-    atoms = [atom for atom in self.iter_atoms() if atom.residue is not None]
+    atoms = [atom_idx for atom_idx in self.iter_atoms() if self.atom_residue_idx.get(atom_idx) is not None]
 
     # make ups point in the same direction
     for i in range(1, len(self.trace.points)):
