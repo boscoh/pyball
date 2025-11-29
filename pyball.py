@@ -105,9 +105,6 @@ class SubTrace(Trace):
 
 
 def catmull_rom_spline(t, p1, p2, p3, p4):
-  """
-  Returns a point at fraction t between p2 and p3.
-  """
   return \
       0.5 * (   t*((2-t)*t     - 1) * p1
               + (t*t*(3*t - 5) + 2) * p2
@@ -117,8 +114,11 @@ def catmull_rom_spline(t, p1, p2, p3, p4):
 
 class SplineTrace(Trace):
   """
-  SplineTrace expands the points in a Trace using
-  a spline interpolation.
+  Smooth trace interpolation using Catmull-Rom splines.
+  
+  Takes a coarse trace (CA atoms) and creates a smooth curve with n_division
+  interpolated points between each pair of trace points. Interpolates positions,
+  up vectors, and tangents. Used for smooth ribbon/cartoon rendering.
   """
   def __init__(self, trace, n_division):
     Trace.__init__(self, n_division*(len(trace.points)-1) + 1)
@@ -200,17 +200,14 @@ class RenderedSoup():
     self.find_ss_by_bb_hbonds()
   
   def iter_residues(self):
-    """Iterator over all residue indices"""
     for i in range(self.soup.get_residue_count()):
       yield i
   
   def iter_atoms(self):
-    """Iterator over all atom indices"""
     for i in range(self.soup.get_atom_count()):
       yield i
   
   def find_atom_in_residue_idx(self, res_idx, atom_type):
-    """Find atom index of specific type in residue"""
     proxy = self.soup.get_residue_proxy(res_idx)
     for atom_idx in proxy.get_atom_indices():
       if self.soup.get_atom_proxy(atom_idx).atom_type == atom_type:
@@ -218,12 +215,9 @@ class RenderedSoup():
     return None
   
   def has_atom_in_residue_idx(self, res_idx, atom_type):
-    """Check if residue has atom of specific type"""
     return self.find_atom_in_residue_idx(res_idx, atom_type) is not None
   
-  
   def get_center(self, points):
-    """Calculate center of points (Vector3d list or numpy array)"""
     if len(points) == 0:
       return Vector3d(0, 0, 0)
     # Check if numpy array or Vector3d list
@@ -244,10 +238,17 @@ class RenderedSoup():
       self.atom_by_objid[objid] = atom_idx
   
   def get_atom_by_objid(self, objid):
-    """Get atom index by objid"""
     return self.atom_by_objid.get(objid)
 
   def build_trace(self):
+    """
+    Build C-alpha trace for backbone visualization.
+    
+    Creates a smooth trace through CA atoms of residues that have complete
+    backbone atoms (N, CA, C, O). Calculates "up" vectors from C-O direction
+    for proper ribbon orientation. Normalizes all up vectors to point in
+    consistent direction for smooth rendering.
+    """
     trace_res_indices = []
     for res_idx in self.iter_residues():
       self.residue_ss[res_idx] = '-'
@@ -301,6 +302,13 @@ class RenderedSoup():
     self.scale = 1.0/max(map(max, centered_points))
 
   def find_bb_hbonds(self):
+    """
+    Detect hydrogen bonds between backbone N and O atoms.
+    
+    Uses spatial hashing for efficient proximity detection. Identifies potential
+    H-bonds when N and O atoms from different residues are within 3.5 Å.
+    Stores H-bond partners as trace indices in residue_hb_partners dict.
+    """
     print("Find H-Bonds...")
     vertices = []
     atoms = []
@@ -335,6 +343,17 @@ class RenderedSoup():
             self.residue_hb_partners[res2_idx].append(i1)
 
   def find_ss_by_bb_hbonds(self):
+    """
+    Assign secondary structure (SS) based on hydrogen bond patterns.
+    
+    Implements simplified DSSP-like algorithm:
+    - Alpha helix ('H'): i->i+4 and i+1->i+5 H-bonds
+    - 3-10 helix ('H'): i->i+3 and i+1->i+4 H-bonds  
+    - Beta sheet ('E'): parallel or anti-parallel H-bond pairs with distant residues
+    - Coil ('C'): everything else
+    
+    Colors residues: helix=red, sheet=blue, coil=gray
+    """
 
     def is_hb(i_res, j_res):
       if not (0 <= i_res <= len(self.trace.residue_indices) - 1):
@@ -404,7 +423,14 @@ class RenderedSoup():
         self.residue_color[res_idx] = color_by_ss[ss]
 
   def find_pieces(self, cutoff=5.5):
-
+    """
+    Split trace into continuous pieces where CA atoms are close.
+    
+    Breaks the trace when CA-CA distance exceeds cutoff (default 5.5Å),
+    indicating chain breaks or missing residues. Smooths tangent and up
+    vectors within each piece for better rendering. Each piece becomes
+    a separate continuous ribbon segment.
+    """
     self.pieces = []
 
     i = 0
@@ -589,6 +615,10 @@ def group(lst, n):
 
 def make_calpha_arrow_mesh(
     rendered_soup, trace, length=0.7, width=0.35, thickness=0.3):
+  """
+  Generate arrows at each CA position pointing along backbone direction.
+  Useful for quick visualization of chain direction and secondary structure.
+  """
   arrow = render.Arrow(length, width, thickness)
 
   n_point = len(trace.points)
@@ -620,6 +650,11 @@ def make_calpha_arrow_mesh(
 
 
 def make_cylinder_trace_mesh(rendered_soup, pieces, coil_detail=4, radius=0.3):
+  """
+  Simple tube representation through CA atoms.
+  Creates cylindrical segments connecting consecutive CA positions, colored by
+  residue secondary structure. Faster to render than cartoons.
+  """
   cylinder = render.Cylinder(coil_detail)
 
   n_point = sum(len(piece.points) for piece in pieces)
@@ -663,7 +698,14 @@ def make_cylinder_trace_mesh(rendered_soup, pieces, coil_detail=4, radius=0.3):
 def make_carton_mesh(
     rendered_soup, pieces, coil_detail=5, spline_detail=3, 
     width=1.6, thickness=0.2):
-
+  """
+  Cartoon/ribbon representation with secondary structure-based geometry.
+  
+  Interpolates smooth splines through CA atoms then extrudes profiles:
+  - Rectangles (ribbons) for helices and sheets
+  - Circles (tubes) for coils
+  Segments change geometry at SS boundaries for visual distinction.
+  """
   rect = render.RectProfile(width, 0.15)
   circle = render.CircleProfile(coil_detail, 0.3)
 
@@ -717,7 +759,13 @@ def make_carton_mesh(
 def make_ball_and_stick_mesh(
     rendered_soup, sphere_stack=5, sphere_arc=5, 
     tube_arc=5, radius=0.2):
-
+  """
+  Classic ball-and-stick representation showing atoms and bonds.
+  
+  Renders non-backbone heavy atoms as spheres, connected by cylindrical bonds.
+  Bonds detected via spatial proximity (<2Å between non-H atoms). Each atom/bond
+  half colored by its residue's secondary structure.
+  """
   sphere = render.Sphere(sphere_stack, sphere_arc)
   cylinder = render.Cylinder(4)
 
