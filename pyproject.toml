@@ -36,6 +36,7 @@ pyball = "pyball:main"
 dev = [
     "ipython>=8.0.0",
     "pytest>=7.0.0",
+    "ruff>=0.1.0",
 ]
 
 [tool.uv]
@@ -43,3 +44,14 @@ dev-dependencies = []
 
 [tool.uv.sources]
 pdbstruct = { git = "https://github.com/boscoh/pdbstruct.git" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pyball", "render", "spacehash"]

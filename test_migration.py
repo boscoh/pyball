@@ -4,17 +4,18 @@ Comprehensive test suite for pdbstruct migration.
 Tests that pyball works correctly with the new pdbstruct library.
 """
 
-import sys
 import subprocess
+import sys
 from pathlib import Path
+
 
 def run_test(name, command):
     """Run a test command and report results"""
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"TEST: {name}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    
+
     if result.returncode == 0:
         print(f"✓ PASS: {name}")
         if result.stdout:
@@ -27,36 +28,40 @@ def run_test(name, command):
             print(f"Error: {result.stderr[:500]}")
         return False
 
+
 def main():
     """Run all migration tests"""
-    print("="*70)
+    print("=" * 70)
     print("PYBALL MIGRATION TEST SUITE")
-    print("="*70)
-    
+    print("=" * 70)
+
     tests = [
         ("Import pyball module", "python -c 'import pyball'"),
         ("Import render module", "python -c 'import render'"),
-        ("Load PDB with pdbstruct", 
-         "python -c 'from pdbstruct import parse; s = parse.load_soup(\"1be9.pdb\"); print(f\"Loaded {s.get_atom_count()} atoms\")'"),
-        ("Test RenderedSoup with indices", 
-         "python -c 'from pdbstruct import parse; s = parse.load_soup(\"1be9.pdb\"); from pyball import RenderedSoup; rs = RenderedSoup(s); print(\"RenderedSoup works with\", s.get_atom_count(), \"atoms\")'"),
-        ("Run pyball on 1be9.pdb",
-         "timeout 5 python pyball.py 1be9.pdb 2>&1 | head -20"),
+        (
+            "Load PDB with pdbstruct",
+            'python -c \'from pdbstruct import parse; s = parse.load_soup("1be9.pdb"); print(f"Loaded {s.get_atom_count()} atoms")\'',
+        ),
+        (
+            "Test RenderedSoup with indices",
+            'python -c \'from pdbstruct import parse; s = parse.load_soup("1be9.pdb"); from pyball import RenderedSoup; rs = RenderedSoup(s); print("RenderedSoup works with", s.get_atom_count(), "atoms")\'',
+        ),
+        ("Run pyball on 1be9.pdb", "timeout 5 python pyball.py 1be9.pdb 2>&1 | head -20"),
     ]
-    
+
     passed = 0
     failed = 0
-    
+
     for name, command in tests:
         if run_test(name, command):
             passed += 1
         else:
             failed += 1
-    
-    print(f"\n{'='*70}")
+
+    print(f"\n{'=' * 70}")
     print(f"RESULTS: {passed}/{len(tests)} tests passed")
-    print(f"{'='*70}")
-    
+    print(f"{'=' * 70}")
+
     if failed == 0:
         print("\n🎉 ALL TESTS PASSED! Migration successful!")
         return 0
@@ -64,7 +69,6 @@ def main():
         print(f"\n⚠️  {failed} test(s) failed")
         return 1
 
+
 if __name__ == "__main__":
     sys.exit(main())
-
-
