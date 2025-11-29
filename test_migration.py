@@ -39,13 +39,13 @@ def main():
         ("Import MolecularViewerCanvas", "python -c 'from pyball import MolecularViewerCanvas'"),
         (
             "Load PDB with pdbstruct",
-            'python -c \'from pdbstruct import parse; s = parse.load_soup("1be9.pdb"); print(f"Loaded {s.get_atom_count()} atoms")\'',
+            'python -c \'from pdbstruct import parse; s = parse.load_soup("examples/1be9.pdb"); print(f"Loaded {s.get_atom_count()} atoms")\'',
         ),
         (
             "Test RenderedSoup with package",
-            'python -c \'from pdbstruct import parse; s = parse.load_soup("1be9.pdb"); from pyball import RenderedSoup; rs = RenderedSoup(s); print("RenderedSoup works with", s.get_atom_count(), "atoms")\'',
+            'python -c \'from pdbstruct import parse; s = parse.load_soup("examples/1be9.pdb"); from pyball import RenderedSoup; rs = RenderedSoup(s); print("RenderedSoup works with", s.get_atom_count(), "atoms")\'',
         ),
-        ("Run pyball module on 1be9.pdb", "timeout 5 python -m pyball 1be9.pdb 2>&1 | head -20"),
+        ("Run pyball module on 1be9.pdb", "timeout 5 python -m pyball examples/1be9.pdb 2>&1 | head -20"),
     ]
 
     passed = 0

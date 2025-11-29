@@ -35,7 +35,7 @@ Thank you for your interest in contributing to PyBall! This document provides gu
 
 4. **Try the viewer**
    ```bash
-   uv run python -m pyball 1be9.pdb
+   uv run python -m pyball examples/1be9.pdb
    ```
 
 ## Issue Tracking with Beads

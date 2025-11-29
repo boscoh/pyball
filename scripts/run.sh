@@ -5,7 +5,7 @@ set -e
 
 if [ -z "$1" ]; then
     echo "Usage: ./scripts/run.sh <pdb_file>"
-    echo "Example: ./scripts/run.sh 1be9.pdb"
+    echo "Example: ./scripts/run.sh examples/1be9.pdb"
     exit 1
 fi
 
