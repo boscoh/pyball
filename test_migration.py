@@ -38,8 +38,8 @@ def main():
         ("Import render module", "python -c 'import render'"),
         ("Load PDB with pdbstruct", 
          "python -c 'from pdbstruct import parse; s = parse.load_soup(\"1be9.pdb\"); print(f\"Loaded {s.get_atom_count()} atoms\")'"),
-        ("Test AtomWrapper", 
-         "python -c 'from pyball import AtomWrapper; from pdbstruct import parse; s = parse.load_soup(\"1be9.pdb\"); from pyball import RenderedSoup; rs = RenderedSoup(s); print(\"AtomWrapper works\")'"),
+        ("Test RenderedSoup with indices", 
+         "python -c 'from pdbstruct import parse; s = parse.load_soup(\"1be9.pdb\"); from pyball import RenderedSoup; rs = RenderedSoup(s); print(\"RenderedSoup works with\", s.get_atom_count(), \"atoms\")'"),
         ("Run pyball on 1be9.pdb",
          "timeout 5 python pyball.py 1be9.pdb 2>&1 | head -20"),
     ]
