@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2025-11-29
+
+### 🚀 Major Refactoring: Index-Based Architecture
+
+**Removed wrapper abstraction layer for cleaner, faster code**
+
+- Eliminated `AtomWrapper` and `ResidueWrapper` classes (140+ lines removed)
+- All atom/residue access now via direct indices + pdbstruct proxies
+- Updated `Bond` class to store indices instead of wrapper objects
+- Updated `Trace` class to use `residue_indices` instead of wrapper list
+- Refactored `RenderedSoup` iterators to return indices
+- Refactored `build_trace()` to work entirely with indices
+
+### 🎯 Benefits
+
+- **Performance**: No wrapper object allocations, direct proxy access
+- **Simplicity**: Cleaner code, simpler mental model
+- **Maintainability**: More direct pdbstruct API usage
+- **Size**: pyball.py reduced from 1,151 → 1,066 lines
+
+### 🐛 Bug Fixes
+
+- Fixed `NameError` in rendering functions (missing `rendered_soup` parameter)
+
+### ✅ Testing
+
+- All 5 migration tests passing
+- Application runs without errors
+- Visual rendering verified
+
 ## [1.0.1] - 2025-11-29
 
 ### 🔧 Improvements
