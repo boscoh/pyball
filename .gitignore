@@ -1,1 +1,37 @@
-.beads/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# uv
+.python-version
+
+# Beads issue tracker
+.beads/beads.db
+.beads/beads.db-shm
+.beads/beads.db-wal
+
+# AI planning documents (ephemeral)
+history/
+
+# Legacy code kept for reference
+archive/
+pdbremix/
