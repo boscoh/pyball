@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyball"
-version = "1.0.0"
+version = "1.1.0"
 description = "Molecular visualization tool for PDB files using modern pdbstruct library"
 readme = "readme.md"
 requires-python = ">=3.12"
