@@ -53,55 +53,54 @@ from pdbstruct.vector3d import Vector3d, Matrix3d
 backbone_atoms = ['N', 'CA', 'C', 'O']
 
 
-
-
-#########################################################
-# Convert PDB structure into smooth pieces of secondary 
-# structure and geometrial objects that use
-# render functions to turn into polygon
-
-
 class Trace:
-    def __init__(self, n=None):
-        if n is not None:
-            self.points = np.zeros((n,3), dtype=np.float32)
-            self.ups = np.zeros((n,3), dtype=np.float32)
-            self.tangents = np.zeros((n,3), dtype=np.float32)
-            self.objids = np.zeros(n, dtype=np.float32)
-            self.residue_indices = [None for i in range(n)]
+  """
+  Backbone trace through C-alpha atoms.
+  
+  Stores positions, up vectors (from C-O), tangent directions, and object IDs
+  for smooth ribbon rendering. Each point corresponds to one residue's CA atom.
+  """
+  def __init__(self, n=None):
+    if n is not None:
+      self.points = np.zeros((n,3), dtype=np.float32)
+      self.ups = np.zeros((n,3), dtype=np.float32)
+      self.tangents = np.zeros((n,3), dtype=np.float32)
+      self.objids = np.zeros(n, dtype=np.float32)
+      self.residue_indices = [None for i in range(n)]
 
-    def get_prev_point(self, i):
-        if i > 0:
-            return self.points[i-1]
-        else:
-            return self.points[0] - self.tangents[i]
+  def get_prev_point(self, i):
+    if i > 0:
+      return self.points[i-1]
+    else:
+      return self.points[0] - self.tangents[i]
 
-    def get_next_point(self, i):
-        if i < len(self.points)-1:
-            return self.points[i+1]
-        else:
-            return self.points[-1] + self.tangents[i]
+  def get_next_point(self, i):
+    if i < len(self.points)-1:
+      return self.points[i+1]
+    else:
+      return self.points[-1] + self.tangents[i]
 
-    def get_prev_up(self, i):
-        if i > 0:
-            return self.ups[i-1]
-        else:
-            return self.ups[0]
+  def get_prev_up(self, i):
+    if i > 0:
+      return self.ups[i-1]
+    else:
+      return self.ups[0]
 
-    def get_next_up(self, i):
-        if i < len(self.ups)-1:
-            return self.ups[i+1]
-        else:
-            return self.ups[-1]
+  def get_next_up(self, i):
+    if i < len(self.ups)-1:
+      return self.ups[i+1]
+    else:
+      return self.ups[-1]
 
 
 class SubTrace(Trace):
-    def __init__(self, trace, i, j):
-        self.points = trace.points[i:j]
-        self.ups = trace.ups[i:j]
-        self.tangents = trace.tangents[i:j]
-        self.objids = trace.objids[i:j]
-        self.residue_indices = trace.residue_indices[i:j]
+  """Slice of a trace between indices i and j (for rendering continuous segments)."""
+  def __init__(self, trace, i, j):
+    self.points = trace.points[i:j]
+    self.ups = trace.ups[i:j]
+    self.tangents = trace.tangents[i:j]
+    self.objids = trace.objids[i:j]
+    self.residue_indices = trace.residue_indices[i:j]
 
 
 def catmull_rom_spline(t, p1, p2, p3, p4):
@@ -165,16 +164,32 @@ class SplineTrace(Trace):
 
 
 class Bond():
+  """
+  Chemical bond between two atoms (stored as indices).
+  Also stores tangent (bond direction) and up vector for cylinder rendering.
+  """
   def __init__(self, atom1_idx, atom2_idx):
     self.atom1_idx = atom1_idx
     self.atom2_idx = atom2_idx
 
 
 class RenderedSoup():
+  """
+  Main structure container with rendering metadata.
+  
+  Wraps a pdbstruct Soup with additional data for visualization:
+  - Atom/residue object IDs for picking
+  - Secondary structure assignments (H/E/C)
+  - Colors by secondary structure
+  - Backbone trace through CA atoms
+  - Bonds between non-backbone atoms
+  - Continuous trace pieces (split at chain breaks)
+  
+  All custom data stored in dictionaries keyed by atom/residue indices
+  since pdbstruct proxies are transient.
+  """
   def __init__(self, soup):
     self.soup = soup
-
-    # Since proxies are transient, store custom data in dictionaries
     self.atom_objids = {}  # atom_idx -> objid
     self.atom_by_objid = {}  # objid -> atom_idx
     self.atom_residue_idx = {}  # atom_idx -> residue_idx
@@ -521,6 +536,7 @@ def identity():
 
 
 class Camera():
+  """View transformation manager for interactive 3D camera control."""
   def __init__(self):
     self.view = identity()
     self.model = identity()
@@ -570,6 +586,13 @@ class Camera():
 
 
 class TriangleStore:
+  """
+  Efficient builder for indexed triangle meshes.
+  
+  Accumulates vertices (position, normal, color, objid) and triangle indices
+  into flat numpy arrays for OpenGL rendering. Supports triangle strips for
+  efficient geometry representation.
+  """
   def __init__(self, n_vertex):
     self.data = np.zeros(
       n_vertex, 
@@ -950,150 +973,179 @@ def get_polar(x, y):
 
 
 class Console():
-    def __init__(self, size, init_str=''):
-        self.text = Text(
-            init_str, bold=True, color=(0.7, 1.0, 0.3, 1.),
-            font_size=10, pos=(0, 0), anchor_y='bottom',
-            anchor_x='center')
-        self.size = size
-        self.x = 0
-        self.y = 0
+  """Debug text overlay for displaying atom information on hover."""
+  def __init__(self, size, init_str=''):
+    self.text = Text(
+        init_str, bold=True, color=(0.7, 1.0, 0.3, 1.),
+        font_size=10, pos=(0, 0), anchor_y='bottom',
+        anchor_x='center')
+    self.size = size
+    self.x = 0
+    self.y = 0
 
-    def draw(self):
-        viewport = gl.glGetIntegerv(gl.GL_VIEWPORT)
-        size = viewport[2:4]
-        x_view_offset = (size[0] - self.size[0]) // 2
-        y_view_offset = (size[1] - self.size[1]) // 2
-        x = self.x + x_view_offset
-        y = self.y + 15 + y_view_offset
-        gl.glViewport(x, y, self.size[0], self.size[1])
-        self.text.pos = (0, 0)
-        self.text.draw()
+  def draw(self):
+    viewport = gl.glGetIntegerv(gl.GL_VIEWPORT)
+    size = viewport[2:4]
+    x_view_offset = (size[0] - self.size[0]) // 2
+    y_view_offset = (size[1] - self.size[1]) // 2
+    x = self.x + x_view_offset
+    y = self.y + 15 + y_view_offset
+    gl.glViewport(x, y, self.size[0], self.size[1])
+    self.text.pos = (0, 0)
+    self.text.draw()
 
 
 
 class MolecularViewerCanvas(app.Canvas):
-    def __init__(self, fname):
-        app.Canvas.__init__(self, title='Molecular viewer', keys='interactive')
-        size = (800, 600)
-        self.size = size
-        self.program = Program(semilight_vertex, semilight_fragment)
-        self.picking_program = Program(picking_vertex, picking_fragment)
+  """
+  Main application window with interactive 3D protein visualization.
+  
+  Provides multiple rendering modes (cartoon, cylinders, arrows, ball-and-stick),
+  interactive camera control (rotate/zoom), and atom picking for inspection.
+  Press 's' to toggle sidechains, 'q' to quit.
+  """
+  def __init__(self, fname):
+    app.Canvas.__init__(self, title='Molecular viewer', keys='interactive')
+    size = (800, 600)
+    self.size = size
+    self.program = Program(semilight_vertex, semilight_fragment)
+    self.picking_program = Program(picking_vertex, picking_fragment)
 
-        soup = parse.load_soup(fname)
-        rendered_soup = RenderedSoup(soup)
-        self.rendered_soup = rendered_soup
+    soup = parse.load_soup(fname)
+    rendered_soup = RenderedSoup(soup)
+    self.rendered_soup = rendered_soup
 
-        print("Building arrows...")
-        self.arrow_buffer = make_calpha_arrow_mesh(rendered_soup, rendered_soup.trace)
+    print("Building arrows...")
+    self.arrow_buffer = make_calpha_arrow_mesh(rendered_soup, rendered_soup.trace)
 
-        print("Building cylindrical trace...")
-        self.cylinder_index_buffer, self.cylinder_vertex_buffer = make_cylinder_trace_mesh(rendered_soup, rendered_soup.pieces)
+    print("Building cylindrical trace...")
+    self.cylinder_index_buffer, self.cylinder_vertex_buffer = make_cylinder_trace_mesh(rendered_soup, rendered_soup.pieces)
 
-        print("Building cartoon...")
-        self.cartoon_index_buffer, self.cartoon_vertex_buffer = make_carton_mesh(rendered_soup, rendered_soup.pieces)
+    print("Building cartoon...")
+    self.cartoon_index_buffer, self.cartoon_vertex_buffer = make_carton_mesh(rendered_soup, rendered_soup.pieces)
 
-        print("Building ball&sticks...")
-        self.ballstick_index_buffer, self.ballstick_vertex_buffer = make_ball_and_stick_mesh(rendered_soup)
+    print("Building ball&sticks...")
+    self.ballstick_index_buffer, self.ballstick_vertex_buffer = make_ball_and_stick_mesh(rendered_soup)
 
-        self.draw_style = 'sidechains'
-        self.camera = Camera()
-        self.camera.resize(*size)
-        self.camera.set_center(rendered_soup.center)
-        self.camera.rezoom(2.0/rendered_soup.scale)
-        self.new_camera = Camera()
-        self.n_step_animate = 0 
-        self.console = Console(size)
-        self.text = self.console.text
-        self.timer = app.Timer(1.0 / 30)
-        self.timer.connect(self.on_timer)
+    self.draw_style = 'sidechains'
+    self.camera = Camera()
+    self.camera.resize(*size)
+    self.camera.set_center(rendered_soup.center)
+    self.camera.rezoom(2.0/rendered_soup.scale)
+    self.new_camera = Camera()
+    self.n_step_animate = 0 
+    self.console = Console(size)
+    self.text = self.console.text
+    self.timer = app.Timer(1.0 / 30)
+    self.timer.connect(self.on_timer)
+    self.timer.start()
+    
+    print(f"Camera center: {rendered_soup.center}, scale: {rendered_soup.scale}, zoom: {self.camera.zoom}")
+    
+    gl.glEnable(gl.GL_DEPTH_TEST)
+    gl.glDepthFunc(gl.GL_LESS)
+    gl.glEnable(gl.GL_BLEND)
+    gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+    gl.glClearColor(0.0, 0.0, 0.0, 1.0)
+
+    self.draw_style = 'sidechains'
+    self.camera = Camera()
+    self.camera.resize(*size)
+    self.camera.set_center(rendered_soup.center)
+    self.camera.rezoom(2.0/rendered_soup.scale)
+    self.new_camera = Camera()
+    self.n_step_animate = 0 
+    self.console = Console(size)
+    self.text = self.console.text
+    self.timer = app.Timer(1.0 / 30)
+    self.timer.connect(self.on_timer)
+    self.timer.start()
+    
+    print(f"Camera center: {rendered_soup.center}, scale: {rendered_soup.scale}, zoom: {self.camera.zoom}")
+    
+    gl.glEnable(gl.GL_DEPTH_TEST)
+    gl.glDepthFunc(gl.GL_LESS)
+    gl.glEnable(gl.GL_BLEND)
+    gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+    gl.glClearColor(0.0, 0.0, 0.0, 1.0)
+
+  def on_key_press(self, event):
+    if event.text == ' ':
+      if self.timer.running:
+        self.timer.stop()
+      else:
         self.timer.start()
-        
-        print(f"Camera center: {rendered_soup.center}, scale: {rendered_soup.scale}, zoom: {self.camera.zoom}")
-        
-        gl.glEnable(gl.GL_DEPTH_TEST)
-        gl.glDepthFunc(gl.GL_LESS)
-        gl.glEnable(gl.GL_BLEND)
-        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-        gl.glClearColor(0.0, 0.0, 0.0, 1.0)
+    if event.text == 's':
+      if self.draw_style == 'sidechains':
+        self.draw_style = 'no-sidechains'
+      else:
+        self.draw_style = 'sidechains'
+      self.update()
+    if event.text == 'c':
+      self.draw_style = 'no-sidechains'
+      self.update()
+    if event.text == 'b':
+      self.draw_style = 'sidechains'
+      self.update()
 
-    def on_key_press(self, event):
-        if event.text == ' ':
-            if self.timer.running:
-                self.timer.stop()
-            else:
-                self.timer.start()
-        if event.text == 's':
-            if self.draw_style == 'sidechains':
-                self.draw_style = 'no-sidechains'
-            else:
-                self.draw_style = 'sidechains'
-            self.update()
-        if event.text == 'c':
-            self.draw_style = 'no-sidechains'
-            self.update()
-        if event.text == 'b':
-            self.draw_style = 'sidechains'
-            self.update()
+  def on_mouse_press(self, event):
+    self.mouse_press_pos = event.pos
 
-    def on_mouse_press(self, event):
-        self.mouse_press_pos = event.pos
+  def on_mouse_move(self, event):
+    if event.is_dragging and hasattr(self, 'mouse_press_pos'):
+      dx = event.pos[0] - self.mouse_press_pos[0]
+      dy = event.pos[1] - self.mouse_press_pos[1]
+      self.camera.rotate(dx * 0.5, dy * 0.5, 0)
+      self.mouse_press_pos = event.pos
+      self.update()
 
-    def on_mouse_move(self, event):
-        if event.is_dragging and hasattr(self, 'mouse_press_pos'):
-            dx = event.pos[0] - self.mouse_press_pos[0]
-            dy = event.pos[1] - self.mouse_press_pos[1]
-            self.camera.rotate(dx * 0.5, dy * 0.5, 0)
-            self.mouse_press_pos = event.pos
-            self.update()
+  def on_mouse_wheel(self, event):
+    self.camera.rezoom(-event.delta[1] * 2)
+    self.update()
 
-    def on_mouse_wheel(self, event):
-        self.camera.rezoom(-event.delta[1] * 2)
-        self.update()
+  def on_timer(self, event):
+    if self.n_step_animate > 0:
+      diff = self.new_camera.center - self.camera.center
+      fraction = 1.0/float(self.n_step_animate)
+      new_center = self.camera.center + fraction*diff
+      self.camera.set_center(new_center)
+      self.n_step_animate -= 1
+      self.update()
 
-    def on_timer(self, event):
-        if self.n_step_animate > 0:
-            diff = self.new_camera.center - self.camera.center
-            fraction = 1.0/float(self.n_step_animate)
-            new_center = self.camera.center + fraction*diff
-            self.camera.set_center(new_center)
-            self.n_step_animate -= 1
-            self.update()
+  def on_draw(self, event):
+    width, height = self.physical_size
+    
+    if width != self.camera.width or height != self.camera.height:
+      self.camera.resize(width, height)
+    
+    gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+    gl.glViewport(0, 0, width, height)
 
-    def on_draw(self, event):
-        width, height = self.physical_size
-        
-        if width != self.camera.width or height != self.camera.height:
-            self.camera.resize(width, height)
-        
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        gl.glViewport(0, 0, width, height)
+    self.program['u_light_position'] = [100., 100., 500.]
+    self.program['u_is_lighting'] = True
+    self.program['u_model'] = self.camera.model
+    self.program['u_normal'] = self.camera.rotation 
+    self.program['u_view'] = self.camera.view
+    self.program['u_projection'] = self.camera.projection
+    self.program['u_is_fog'] = self.camera.is_fog
+    self.program['u_fog_far'] = self.camera.fog_far
+    self.program['u_fog_near'] = self.camera.fog_near
+    self.program['u_fog_color'] = self.camera.fog_color
 
-        self.program['u_light_position'] = [100., 100., 500.]
-        self.program['u_is_lighting'] = True
-        self.program['u_model'] = self.camera.model
-        self.program['u_normal'] = self.camera.rotation 
-        self.program['u_view'] = self.camera.view
-        self.program['u_projection'] = self.camera.projection
-        self.program['u_is_fog'] = self.camera.is_fog
-        self.program['u_fog_far'] = self.camera.fog_far
-        self.program['u_fog_near'] = self.camera.fog_near
-        self.program['u_fog_color'] = self.camera.fog_color
+    self.draw_buffers(self.program)
 
-        self.draw_buffers(self.program)
+    self.console.draw()
+    self.last_draw = 'screen'
 
-        self.console.draw()
-        self.last_draw = 'screen'
-
-    def draw_buffers(self, program):
-        if self.draw_style == 'sidechains':
-            program.bind(self.ballstick_vertex_buffer)
-            program.draw('triangles', self.ballstick_index_buffer)
-        elif self.draw_style == 'no-sidechains':
-            program.bind(self.cylinder_vertex_buffer)
-            program.draw('triangles', self.cylinder_index_buffer)
-        else:
-            raise Exception("Unknown draw style")
+  def draw_buffers(self, program):
+    if self.draw_style == 'sidechains':
+      program.bind(self.ballstick_vertex_buffer)
+      program.draw('triangles', self.ballstick_index_buffer)
+    elif self.draw_style == 'no-sidechains':
+      program.bind(self.cylinder_vertex_buffer)
+      program.draw('triangles', self.cylinder_index_buffer)
+    else:
+      raise Exception("Unknown draw style")
 
 def main(fname):
     print(f"Creating canvas for {fname}...")
