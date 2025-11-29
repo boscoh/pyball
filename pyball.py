@@ -588,7 +588,7 @@ def group(lst, n):
 
 
 def make_calpha_arrow_mesh(
-    trace, length=0.7, width=0.35, thickness=0.3):
+    rendered_soup, trace, length=0.7, width=0.35, thickness=0.3):
   arrow = render.Arrow(length, width, thickness)
 
   n_point = len(trace.points)
@@ -619,7 +619,7 @@ def make_calpha_arrow_mesh(
 
 
 
-def make_cylinder_trace_mesh(pieces, coil_detail=4, radius=0.3):
+def make_cylinder_trace_mesh(rendered_soup, pieces, coil_detail=4, radius=0.3):
   cylinder = render.Cylinder(coil_detail)
 
   n_point = sum(len(piece.points) for piece in pieces)
@@ -661,7 +661,7 @@ def make_cylinder_trace_mesh(pieces, coil_detail=4, radius=0.3):
 
 
 def make_carton_mesh(
-    pieces, coil_detail=5, spline_detail=3, 
+    rendered_soup, pieces, coil_detail=5, spline_detail=3, 
     width=1.6, thickness=0.2):
 
   rect = render.RectProfile(width, 0.15)
@@ -937,13 +937,13 @@ class MolecularViewerCanvas(app.Canvas):
         self.rendered_soup = rendered_soup
 
         print("Building arrows...")
-        self.arrow_buffer = make_calpha_arrow_mesh(rendered_soup.trace)
+        self.arrow_buffer = make_calpha_arrow_mesh(rendered_soup, rendered_soup.trace)
 
         print("Building cylindrical trace...")
-        self.cylinder_index_buffer, self.cylinder_vertex_buffer = make_cylinder_trace_mesh(rendered_soup.pieces)
+        self.cylinder_index_buffer, self.cylinder_vertex_buffer = make_cylinder_trace_mesh(rendered_soup, rendered_soup.pieces)
 
         print("Building cartoon...")
-        self.cartoon_index_buffer, self.cartoon_vertex_buffer = make_carton_mesh(rendered_soup.pieces)
+        self.cartoon_index_buffer, self.cartoon_vertex_buffer = make_carton_mesh(rendered_soup, rendered_soup.pieces)
 
         print("Building ball&sticks...")
         self.ballstick_index_buffer, self.ballstick_vertex_buffer = make_ball_and_stick_mesh(rendered_soup)
