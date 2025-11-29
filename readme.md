@@ -75,6 +75,19 @@ Run tests:
 uv run python test_migration.py
 ```
 
+## Technical Notes
+
+### OpenGL Rendering
+
+This viewer uses modern OpenGL ES with proper depth testing and face culling. Key implementation details:
+
+- **Depth Buffer**: Explicitly requests 24-bit depth buffer via `config={"depth_size": 24}` in Canvas initialization
+- **GL State Management**: All OpenGL state (depth testing, culling) is set every frame in `on_draw()` to prevent framework resets
+- **Face Culling**: Back-face culling enabled (`GL_CULL_FACE`) for correct rendering and performance
+- **No Blending**: All geometry is opaque, so blending is disabled to avoid depth buffer interference
+
+These configurations ensure proper depth sorting across all rendering modes (cartoon, cylinders, ball-and-stick).
+
 ## Migration Note
 
 This project has been migrated from the legacy `pdbremix` library to the modern `pdbstruct` library. The migration maintains full backward compatibility while providing better performance and Python 3.12+ support.
