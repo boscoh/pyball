@@ -120,14 +120,6 @@ class MolecularViewerCanvas(app.Canvas):
             f"Camera center: {rendered_soup.center}, scale: {rendered_soup.scale}, zoom: {self.camera.zoom}"
         )
 
-        gl.glEnable(gl.GL_DEPTH_TEST)
-        gl.glDepthFunc(gl.GL_LESS)
-        gl.glDepthMask(gl.GL_TRUE)
-        gl.glEnable(gl.GL_CULL_FACE)
-        gl.glCullFace(gl.GL_BACK)
-        gl.glFrontFace(gl.GL_CCW)
-        gl.glClearColor(0.0, 0.0, 0.0, 1.0)
-
     def on_key_press(self, event):
         if event.text == " ":
             if self.timer.running:
@@ -180,8 +172,16 @@ class MolecularViewerCanvas(app.Canvas):
         if width != self.camera.width or height != self.camera.height:
             self.camera.resize(width, height)
 
+        gl.glClearColor(0.0, 0.0, 0.0, 1.0)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
         gl.glViewport(0, 0, width, height)
+
+        gl.glEnable(gl.GL_DEPTH_TEST)
+        gl.glDepthFunc(gl.GL_LEQUAL)
+        gl.glDepthMask(gl.GL_TRUE)
+        gl.glEnable(gl.GL_CULL_FACE)
+        gl.glCullFace(gl.GL_BACK)
+        gl.glFrontFace(gl.GL_CCW)
 
         self.program["u_light_position"] = [100.0, 100.0, 500.0]
         self.program["u_is_lighting"] = True
