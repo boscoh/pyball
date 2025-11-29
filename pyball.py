@@ -305,9 +305,9 @@ class SplineTrace(Trace):
 
 
 class Bond():
-  def __init__(self, atom1, atom2):
-    self.atom1 = atom1
-    self.atom2 = atom2
+  def __init__(self, atom1_idx, atom2_idx):
+    self.atom1_idx = atom1_idx
+    self.atom2_idx = atom2_idx
 
 
 class RenderedSoup():
@@ -579,25 +579,35 @@ class RenderedSoup():
         i = j
 
   def find_bonds(self):
-    self.draw_to_screen_atoms = list(self.iter_atoms())
-    backbone_atoms.remove('CA')
-    self.draw_to_screen_atoms = [a for a in self.draw_to_screen_atoms if a.type not in backbone_atoms and a.element!="H"]
-    vertices = [a.pos for a in self.draw_to_screen_atoms]
+    all_atom_indices = list(range(self.soup.get_atom_count()))
+    backbone_atoms_temp = backbone_atoms.copy()
+    backbone_atoms_temp.remove('CA')
+    
+    self.draw_to_screen_atoms = []
+    for atom_idx in all_atom_indices:
+      proxy = self.soup.get_atom_proxy(atom_idx)
+      if proxy.atom_type not in backbone_atoms_temp and proxy.elem != "H":
+        self.draw_to_screen_atoms.append(atom_idx)
+    
+    vertices = [self.soup.get_atom_proxy(idx).pos for idx in self.draw_to_screen_atoms]
     self.bonds = []
     print("Finding bonds...")
     for i, j in SpaceHash(vertices).close_pairs():
-      atom1 = self.draw_to_screen_atoms[i]
-      atom2 = self.draw_to_screen_atoms[j]
+      atom1_idx = self.draw_to_screen_atoms[i]
+      atom2_idx = self.draw_to_screen_atoms[j]
+      atom1_proxy = self.soup.get_atom_proxy(atom1_idx)
+      atom2_proxy = self.soup.get_atom_proxy(atom2_idx)
+      
       d = 2
-      if atom1.element == 'H' or atom2.element == 'H':
+      if atom1_proxy.elem == 'H' or atom2_proxy.elem == 'H':
         continue
-      if v3.pos_distance(atom1.pos, atom2.pos) < d:
-        if atom1.alt_conform != " " and atom2.alt_conform != " ":
-          if atom1.alt_conform != atom2.alt_conform:
+      if v3.pos_distance(atom1_proxy.pos, atom2_proxy.pos) < d:
+        if atom1_proxy.alt != " " and atom2_proxy.alt != " ":
+          if atom1_proxy.alt != atom2_proxy.alt:
             continue
-        bond = Bond(atom1, atom2)
-        bond.tangent = atom2.pos - atom1.pos
-        bond.up = v3.cross_product_vec(atom1.pos, bond.tangent)
+        bond = Bond(atom1_idx, atom2_idx)
+        bond.tangent = atom2_proxy.pos - atom1_proxy.pos
+        bond.up = v3.cross_product_vec(atom1_proxy.pos, bond.tangent)
         self.bonds.append(bond)
 
 
@@ -825,36 +835,51 @@ def make_ball_and_stick_mesh(
   n_vertex += 2*len(rendered_soup.bonds)*cylinder.n_vertex
   triangle_store = TriangleStore(n_vertex)
 
-  for atom in rendered_soup.draw_to_screen_atoms:
+  for atom_idx in rendered_soup.draw_to_screen_atoms:
+    atom_proxy = rendered_soup.soup.get_atom_proxy(atom_idx)
+    res_idx = rendered_soup.atom_residue_idx.get(atom_idx)
+    color = rendered_soup.residue_color.get(res_idx, [0.4, 1.0, 0.4]) if res_idx is not None else [0.4, 1.0, 0.4]
+    objid = rendered_soup.atom_objids.get(atom_idx, atom_idx)
+    
     triangle_store.setup_next_strip(sphere.indices)
     orientate = sphere.get_orientate(radius)
     for point in sphere.points:
       triangle_store.add_vertex(
-          np.dot(orientate[:3,:3], point) + atom.pos,
+          np.dot(orientate[:3,:3], point) + atom_proxy.pos,
           point, # same as normal!
-          atom.residue.color, 
-          atom.objid)
+          color, 
+          objid)
 
   for bond in rendered_soup.bonds:
+    atom1_proxy = rendered_soup.soup.get_atom_proxy(bond.atom1_idx)
+    atom2_proxy = rendered_soup.soup.get_atom_proxy(bond.atom2_idx)
+    
+    res1_idx = rendered_soup.atom_residue_idx.get(bond.atom1_idx)
+    res2_idx = rendered_soup.atom_residue_idx.get(bond.atom2_idx)
+    color1 = rendered_soup.residue_color.get(res1_idx, [0.4, 1.0, 0.4]) if res1_idx is not None else [0.4, 1.0, 0.4]
+    color2 = rendered_soup.residue_color.get(res2_idx, [0.4, 1.0, 0.4]) if res2_idx is not None else [0.4, 1.0, 0.4]
+    objid1 = rendered_soup.atom_objids.get(bond.atom1_idx, bond.atom1_idx)
+    objid2 = rendered_soup.atom_objids.get(bond.atom2_idx, bond.atom2_idx)
+    
     tangent = bond.tangent.scale(0.5)
 
     orientate = cylinder.get_orientate(tangent, bond.up, radius)
     triangle_store.setup_next_strip(cylinder.indices)
     for point, normal in zip(cylinder.points, cylinder.normals):
       triangle_store.add_vertex(
-          np.dot(orientate[:3,:3], point) + bond.atom1.pos,
+          np.dot(orientate[:3,:3], point) + atom1_proxy.pos,
           np.dot(orientate[:3,:3], normal), 
-          bond.atom1.residue.color, 
-          bond.atom1.objid)
+          color1, 
+          objid1)
 
     orientate = cylinder.get_orientate(-tangent, bond.up, radius)
     triangle_store.setup_next_strip(cylinder.indices)
     for point, normal in zip(cylinder.points, cylinder.normals):
       triangle_store.add_vertex(
-          np.dot(orientate[:3,:3], point) + bond.atom2.pos,
+          np.dot(orientate[:3,:3], point) + atom2_proxy.pos,
           np.dot(orientate[:3,:3], normal), 
-          bond.atom2.residue.color, 
-          bond.atom2.objid)
+          color2, 
+          objid2)
 
   return triangle_store.index_buffer(), triangle_store.vertex_buffer()
 
