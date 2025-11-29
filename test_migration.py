@@ -6,7 +6,6 @@ Tests that pyball works correctly with the new pdbstruct library.
 
 import subprocess
 import sys
-from pathlib import Path
 
 
 def run_test(name, command):

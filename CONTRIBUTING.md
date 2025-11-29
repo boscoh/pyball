@@ -60,6 +60,26 @@ bd close <id> --reason "Fixed" --json
 
 See `AGENTS.md` for detailed beads workflow.
 
+## Development Scripts
+
+Convenient scripts are provided in the `scripts/` directory:
+
+```bash
+# Run pyball with a PDB file
+./scripts/run.sh 1be9.pdb
+
+# Run the test suite
+./scripts/test.sh
+
+# Format code with ruff
+./scripts/format.sh
+
+# Check code with ruff (lint)
+./scripts/lint.sh
+```
+
+All scripts use `uv` to manage dependencies and run commands in the proper environment.
+
 ## Code Style
 
 ### Python Style Guide

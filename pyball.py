@@ -26,20 +26,16 @@ Controls:
 import itertools
 import math
 import sys
-from ctypes import c_float
-from pprint import pprint
 
 import numpy as np
-import numpy.linalg as linalg
 import OpenGL.GL as gl
 from pdbstruct import parse
 from pdbstruct import vector3d as v3
-from pdbstruct.vector3d import Matrix3d, Vector3d
-from vispy import app, gloo, scene
-from vispy.gloo import IndexBuffer, Program, VertexBuffer
-from vispy.scene import visuals
+from pdbstruct.vector3d import Vector3d
+from vispy import app, gloo
+from vispy.gloo import Program
 from vispy.scene.visuals import Text
-from vispy.util.transforms import ortho, perspective, rotate, translate
+from vispy.util.transforms import perspective, rotate, translate
 
 import render
 from spacehash import SpaceHash
@@ -131,15 +127,15 @@ class SplineTrace(Trace):
             if j == n_trace_point - 1:
                 n += 1
             for k in range(n):
-                l = offset + k
-                self.points[l, :] = catmull_rom_spline(
+                idx = offset + k
+                self.points[idx, :] = catmull_rom_spline(
                     k * delta,
                     trace.get_prev_point(i),
                     trace.points[i],
                     trace.points[j],
                     trace.get_next_point(j),
                 )
-                self.ups[l, :] = catmull_rom_spline(
+                self.ups[idx, :] = catmull_rom_spline(
                     k * delta,
                     trace.get_prev_up(i),
                     trace.ups[i],
@@ -147,9 +143,9 @@ class SplineTrace(Trace):
                     trace.get_next_up(j),
                 )
                 if k / float(n) < 0.5:
-                    self.objids[l] = trace.objids[i]
+                    self.objids[idx] = trace.objids[i]
                 else:
-                    self.objids[l] = trace.objids[i + 1]
+                    self.objids[idx] = trace.objids[i + 1]
             offset += n
 
         n_point = len(self.points)
@@ -307,13 +303,6 @@ class RenderedSoup:
             self.trace.ups[i] = (
                 self.soup.get_atom_proxy(c_idx).pos - self.soup.get_atom_proxy(o_idx).pos
             )
-
-        # remove alternate conformation by looking for orphaned atoms
-        atoms = [
-            atom_idx
-            for atom_idx in self.iter_atoms()
-            if self.atom_residue_idx.get(atom_idx) is not None
-        ]
 
         # make ups point in the same direction
         for i in range(1, len(self.trace.points)):
@@ -914,7 +903,7 @@ uniform float u_fog_far;
 uniform vec3 u_fog_color;
 
 const vec4 ambient_color = vec4(.2, .2, .2, 1.);
-const vec4 diffuse_intensity = vec4(1., 1., 1., 1.); 
+const vec4 diffuse_intensity = vec4(1., 1., 1., 1.);
 
 varying vec4 N;
 varying vec3 v_color;
@@ -935,8 +924,8 @@ void main()
         float depth = gl_FragCoord.z / gl_FragCoord.w;
         float fog_factor = smoothstep(u_fog_near, u_fog_far, depth);
         gl_FragColor = mix(
-            gl_FragColor, 
-            vec4(u_fog_color, gl_FragColor.w), 
+            gl_FragColor,
+            vec4(u_fog_color, gl_FragColor.w),
             fog_factor);
     }
 }
@@ -968,7 +957,7 @@ picking_fragment = """
 
 varying float v_objid;
 
-int int_mod(int x, int y) { 
+int int_mod(int x, int y) {
     int z = x / y;
     return x - y*z;
 }

@@ -28,7 +28,9 @@ class SpaceHash(object):
         self.inv_div = 1.0 / self.div
         self.padding = padding
 
-        zero3 = lambda: [0.0] * 3
+        def zero3():
+            return [0.0] * 3
+
         self.minima = zero3()
         self.maxima = zero3()
         self.spans = zero3()
