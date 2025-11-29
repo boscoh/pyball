@@ -58,6 +58,11 @@ python -m pyball 1cph.pdb
 
 - **Mouse drag** - Rotate view
 - **Mouse wheel** - Zoom in/out
+
+**Rendering modes:**
+- **r** - Cartoon/ribbon mode (secondary structure)
+- **c** - Cylinder trace mode (CA backbone)
+- **b** - Ball-and-stick mode (all atoms)
 - **s** - Toggle sidechains on/off
 - **q** - Exit
 

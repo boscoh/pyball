@@ -60,7 +60,13 @@ class MolecularViewerCanvas(app.Canvas):
 
     Provides multiple rendering modes (cartoon, cylinders, arrows, ball-and-stick),
     interactive camera control (rotate/zoom), and atom picking for inspection.
-    Press 's' to toggle sidechains, 'q' to quit.
+
+    Keyboard controls:
+    - 'r': Cartoon/ribbon mode
+    - 'c': Cylinder trace mode
+    - 'b': Ball-and-stick mode
+    - 's': Toggle sidechains
+    - 'q': Quit
     """
 
     def __init__(self, fname):
@@ -133,6 +139,9 @@ class MolecularViewerCanvas(app.Canvas):
         if event.text == "b":
             self.draw_style = "sidechains"
             self.update()
+        if event.text == "r":
+            self.draw_style = "cartoon"
+            self.update()
 
     def on_mouse_press(self, event):
         self.mouse_press_pos = event.pos
@@ -190,5 +199,8 @@ class MolecularViewerCanvas(app.Canvas):
         elif self.draw_style == "no-sidechains":
             program.bind(self.cylinder_vertex_buffer)
             program.draw("triangles", self.cylinder_index_buffer)
+        elif self.draw_style == "cartoon":
+            program.bind(self.cartoon_vertex_buffer)
+            program.draw("triangles", self.cartoon_index_buffer)
         else:
-            raise Exception("Unknown draw style")
+            raise Exception(f"Unknown draw style: {self.draw_style}")
