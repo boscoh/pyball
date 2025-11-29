@@ -24,9 +24,153 @@ import OpenGL.GL as gl
 
 from ctypes import c_float
 
-from pdbremix import pdbatoms
-import pdbremix.v3 as v3
-from pdbremix.data import backbone_atoms
+from pdbstruct import parse
+from pdbstruct import vector3d as v3
+from pdbstruct.vector3d import Vector3d, Matrix3d
+# from pdbstruct.store import backbone_atoms  # TODO: Check if this exists
+backbone_atoms = ['N', 'CA', 'C', 'O']  # Temporary hardcode
+
+
+#########################################################
+# Wrapper classes for transient proxies
+#########################################################
+
+class AtomWrapper:
+    """Wrapper providing persistent interface over transient AtomProxy"""
+    def __init__(self, soup, atom_idx, rendered_soup):
+        self._soup = soup
+        self._atom_idx = atom_idx
+        self._rs = rendered_soup
+    
+    def _proxy(self):
+        return self._soup.get_atom_proxy(self._atom_idx)
+    
+    @property
+    def pos(self):
+        return self._proxy().pos
+    
+    @property
+    def atom_type(self):
+        return self._proxy().atom_type
+    
+    @property
+    def type(self):
+        return self.atom_type
+    
+    @property
+    def element(self):
+        return self._proxy().elem
+    
+    @property
+    def elem(self):
+        return self._proxy().elem
+    
+    @property
+    def alt_conform(self):
+        return self._proxy().alt
+    
+    @property
+    def alt(self):
+        return self._proxy().alt
+    
+    @property
+    def objid(self):
+        return self._rs.atom_objids.get(self._atom_idx)
+    
+    @objid.setter
+    def objid(self, value):
+        self._rs.atom_objids[self._atom_idx] = value
+    
+    @property
+    def residue(self):
+        res_idx = self._rs.atom_residue_idx.get(self._atom_idx)
+        if res_idx is not None:
+            return ResidueWrapper(self._soup, res_idx, self._rs)
+        return None
+    
+    @residue.setter
+    def residue(self, res_wrapper):
+        if isinstance(res_wrapper, ResidueWrapper):
+            self._rs.atom_residue_idx[self._atom_idx] = res_wrapper._res_idx
+
+
+class ResidueWrapper:
+    """Wrapper providing persistent interface over transient ResidueProxy"""
+    def __init__(self, soup, res_idx, rendered_soup):
+        self._soup = soup
+        self._res_idx = res_idx
+        self._rs = rendered_soup
+    
+    def _proxy(self):
+        return self._soup.get_residue_proxy(self._res_idx)
+    
+    @property
+    def res_type(self):
+        return self._proxy().res_type
+    
+    @property
+    def res_num(self):
+        return self._proxy().res_num
+    
+    @property
+    def chain(self):
+        return self._proxy().chain
+    
+    def get_atom_indices(self):
+        return self._proxy().get_atom_indices()
+    
+    def has_atom(self, atom_type):
+        return self._rs.has_atom_in_residue_idx(self._res_idx, atom_type)
+    
+    def atom(self, atom_type):
+        atom_idx = self._rs.find_atom_in_residue_idx(self._res_idx, atom_type)
+        if atom_idx is not None:
+            return AtomWrapper(self._soup, atom_idx, self._rs)
+        return None
+    
+    def atoms(self):
+        for atom_idx in self.get_atom_indices():
+            yield AtomWrapper(self._soup, atom_idx, self._rs)
+    
+    @property
+    def ss(self):
+        return self._rs.residue_ss.get(self._res_idx, '-')
+    
+    @ss.setter
+    def ss(self, value):
+        self._rs.residue_ss[self._res_idx] = value
+    
+    @property
+    def color(self):
+        return self._rs.residue_color.get(self._res_idx, [0.4, 1.0, 0.4])
+    
+    @color.setter
+    def color(self, value):
+        self._rs.residue_color[self._res_idx] = value
+    
+    @property
+    def objid(self):
+        return self._rs.residue_objids.get(self._res_idx)
+    
+    @objid.setter
+    def objid(self, value):
+        self._rs.residue_objids[self._res_idx] = value
+    
+    @property
+    def i(self):
+        return self._rs.residue_i.get(self._res_idx)
+    
+    @i.setter
+    def i(self, value):
+        self._rs.residue_i[self._res_idx] = value
+    
+    @property
+    def hb_partners(self):
+        return self._rs.residue_hb_partners.get(self._res_idx, [])
+    
+    @hb_partners.setter
+    def hb_partners(self, value):
+        self._rs.residue_hb_partners[self._res_idx] = value
 
 
 #########################################################
@@ -148,9 +292,19 @@ class RenderedSoup():
   def __init__(self, soup):
     self.soup = soup
 
-    self.atom_by_objid = {}
+    # Since proxies are transient, store custom data in dictionaries
+    self.atom_objids = {}  # atom_idx -> objid
+    self.atom_by_objid = {}  # objid -> atom_idx
+    self.atom_residue_idx = {}  # atom_idx -> residue_idx
+    
+    self.residue_objids = {}  # residue_idx -> objid
+    self.residue_ss = {}  # residue_idx -> ss string
+    self.residue_color = {}  # residue_idx -> [r,g,b]
+    self.residue_i = {}  # residue_idx -> trace index
+    self.residue_hb_partners = {}  # residue_idx -> list
+    
     self.build_objids()
-
+    
     self.build_trace()
 
     self.bonds = []
@@ -162,15 +316,72 @@ class RenderedSoup():
     # self.find_ss_by_zhang_skolnick()
     self.find_bb_hbonds()
     self.find_ss_by_bb_hbonds()
+  
+  def iter_residues(self):
+    """Iterator over all residues (as wrappers)"""
+    for i in range(self.soup.get_residue_count()):
+      yield ResidueWrapper(self.soup, i, self)
+  
+  def iter_atoms(self):
+    """Iterator over all atoms (as wrappers)"""
+    for i in range(self.soup.get_atom_count()):
+      yield AtomWrapper(self.soup, i, self)
+  
+  def find_atom_in_residue_idx(self, res_idx, atom_type):
+    """Find atom index of specific type in residue"""
+    proxy = self.soup.get_residue_proxy(res_idx)
+    for atom_idx in proxy.get_atom_indices():
+      if self.soup.get_atom_proxy(atom_idx).atom_type == atom_type:
+        return atom_idx
+    return None
+  
+  def has_atom_in_residue_idx(self, res_idx, atom_type):
+    """Check if residue has atom of specific type"""
+    return self.find_atom_in_residue_idx(res_idx, atom_type) is not None
+  
+  def find_atom_in_residue(self, residue, atom_type):
+    """Find atom of specific type in residue wrapper, returns wrapper"""
+    if isinstance(residue, ResidueWrapper):
+      return residue.atom(atom_type)
+    return None
+  
+  def has_atom_in_residue(self, residue, atom_type):
+    """Check if residue wrapper has atom of specific type"""
+    if isinstance(residue, ResidueWrapper):
+      return residue.has_atom(atom_type)
+    return False
+  
+  def get_center(self, points):
+    """Calculate center of points (Vector3d list or numpy array)"""
+    if len(points) == 0:
+      return Vector3d(0, 0, 0)
+    # Check if numpy array or Vector3d list
+    if isinstance(points, np.ndarray):
+      center = np.mean(points, axis=0)
+      return Vector3d(center[0], center[1], center[2])
+    else:
+      sum_x = sum(p.x for p in points)
+      sum_y = sum(p.y for p in points)
+      sum_z = sum(p.z for p in points)
+      n = len(points)
+      return Vector3d(sum_x/n, sum_y/n, sum_z/n)
 
   def build_objids(self):
-    for i_atom, atom in enumerate(self.soup.atoms()):
-      self.atom_by_objid[i_atom] = atom
-      atom.objid = i_atom
+    for atom_idx in range(self.soup.get_atom_count()):
+      objid = atom_idx
+      self.atom_objids[atom_idx] = objid
+      self.atom_by_objid[objid] = atom_idx
+  
+  def get_atom_by_objid(self, objid):
+    """Get atom wrapper by objid"""
+    atom_idx = self.atom_by_objid.get(objid)
+    if atom_idx is not None:
+      return AtomWrapper(self.soup, atom_idx, self)
+    return None
 
   def build_trace(self):
     trace_residues = []
-    for residue in self.soup.residues():
+    for residue in self.iter_residues():
       residue.ss = '-'
       residue.color = [0.4, 1.0, 0.4]
       if residue.has_atom('CA') and residue.has_atom('C') and residue.has_atom('O'):
@@ -178,7 +389,8 @@ class RenderedSoup():
         trace_residues.append(residue)
         res_objid = ca.objid
       else:
-        res_objid = list(residue.atoms())[0].objid
+        first_atom = list(residue.atoms())[0]
+        res_objid = first_atom.objid
       residue.objid = res_objid
       for atom in residue.atoms():
         atom.residue = residue
@@ -195,12 +407,7 @@ class RenderedSoup():
       self.trace.ups[i] = c.pos - o.pos
 
     # remove alternate conformation by looking for orphaned atoms
-    atoms = self.soup.atoms()
-    n = len(atoms)
-    for i in reversed(range(n)):
-      atom = atoms[i]
-      if not hasattr(atom, 'residue'):
-        del atoms[i]
+    atoms = [atom for atom in self.iter_atoms() if atom.residue is not None]
 
     # make ups point in the same direction
     for i in range(1, len(self.trace.points)):
@@ -208,7 +415,7 @@ class RenderedSoup():
          self.trace.ups[i] = -self.trace.ups[i]
 
     # find geometrical center of points
-    self.center = v3.get_center(self.trace.points)
+    self.center = self.get_center(self.trace.points)
     centered_points = [p - self.center for p in self.trace.points]
 
     self.scale = 1.0/max(map(max, centered_points))
@@ -219,13 +426,13 @@ class RenderedSoup():
     atoms = []
     for residue in self.trace.residues:
       if residue.has_atom('O'):
-        atom = residue.atom('O')  
-        atoms.append(atom)
-        vertices.append(atom.pos)
+        o_atom = residue.atom('O')
+        atoms.append(o_atom)
+        vertices.append(o_atom.pos)
       if residue.has_atom('N'):
-        atom = residue.atom('N')  
-        atoms.append(atom)
-        vertices.append(atom.pos)
+        n_atom = residue.atom('N')
+        atoms.append(n_atom)
+        vertices.append(n_atom.pos)
       residue.hb_partners = []
     d = 3.5
     for i, j in SpaceHash(vertices).close_pairs():
@@ -233,7 +440,7 @@ class RenderedSoup():
       atom2 = atoms[j]
       if atom1.type == atom2.type:
         continue
-      if v3.distance(atom1.pos, atom2.pos) < d:
+      if v3.pos_distance(atom1.pos, atom2.pos) < d:
         res1 = atom1.residue
         res2 = atom2.residue
         res1.hb_partners.append(res2.i)
@@ -308,7 +515,7 @@ class RenderedSoup():
       if j == n_point:
         is_new_piece = True
       else:
-        dist = v3.distance(self.trace.points[j-1], self.trace.points[j]) 
+        dist = v3.pos_distance(self.trace.points[j-1], self.trace.points[j]) 
         if dist > cutoff:
           is_new_piece = True
 
@@ -320,7 +527,12 @@ class RenderedSoup():
             tangent = self.trace.points[k] - self.trace.points[k-1]
           else:
             tangent = self.trace.points[k+1] - self.trace.points[k-1]
-          self.trace.tangents[k] = v3.norm(tangent)
+          # Normalize numpy array directly
+          norm = np.linalg.norm(tangent)
+          if norm > 0:
+            self.trace.tangents[k] = tangent / norm
+          else:
+            self.trace.tangents[k] = tangent
 
         ups = []
         # smooth then rotate
@@ -330,7 +542,14 @@ class RenderedSoup():
             up = up + self.trace.ups[k-1]
           elif k < j-1:
             up = up + self.trace.ups[k+1]
-          ups.append(v3.norm(v3.perpendicular(up, self.trace.tangents[k])))
+          # Compute perpendicular with numpy (up - (up·tangent)*tangent)
+          tangent = self.trace.tangents[k]
+          perp = up - np.dot(up, tangent) * tangent
+          norm = np.linalg.norm(perp)
+          if norm > 0:
+            ups.append(perp / norm)
+          else:
+            ups.append(perp)
         self.trace.ups[i:j] = ups
 
         self.pieces.append(SubTrace(self.trace, i, j))
@@ -338,7 +557,7 @@ class RenderedSoup():
         i = j
 
   def find_bonds(self):
-    self.draw_to_screen_atoms = self.soup.atoms()
+    self.draw_to_screen_atoms = list(self.iter_atoms())
     backbone_atoms.remove('CA')
     self.draw_to_screen_atoms = [a for a in self.draw_to_screen_atoms if a.type not in backbone_atoms and a.element!="H"]
     vertices = [a.pos for a in self.draw_to_screen_atoms]
@@ -350,13 +569,13 @@ class RenderedSoup():
       d = 2
       if atom1.element == 'H' or atom2.element == 'H':
         continue
-      if v3.distance(atom1.pos, atom2.pos) < d:
+      if v3.pos_distance(atom1.pos, atom2.pos) < d:
         if atom1.alt_conform != " " and atom2.alt_conform != " ":
           if atom1.alt_conform != atom2.alt_conform:
             continue
         bond = Bond(atom1, atom2)
         bond.tangent = atom2.pos - atom1.pos
-        bond.up = v3.cross(atom1.pos, bond.tangent)
+        bond.up = v3.cross_product_vec(atom1.pos, bond.tangent)
         self.bonds.append(bond)
 
 
@@ -474,12 +693,12 @@ def make_calpha_arrow_mesh(
 
       points = [arrow.vertices[i] for i in indices]
 
-      normal = v3.cross(points[1] - points[0], points[0] - points[2])
-      normal = v3.transform(orientate, normal)
+      normal = v3.cross_product_vec(points[1] - points[0], points[0] - points[2])
+      normal = np.dot(orientate[:3,:3], normal)  # Matrix-vector multiply with numpy
 
       for point in points:
         triangle_store.add_vertex(
-          v3.transform(orientate, point) + trace.points[i_point],
+          np.dot(orientate[:3,:3], point) + trace.points[i_point],
           normal, 
           trace.residues[i_point].color, 
           trace.objids[i_point])
@@ -507,8 +726,8 @@ def make_cylinder_trace_mesh(pieces, coil_detail=4, radius=0.3):
       triangle_store.setup_next_strip(cylinder.indices)
       for point, normal in zip(cylinder.points, cylinder.normals):
         triangle_store.add_vertex(
-            v3.transform(orientate, point) + points[i_point],
-            v3.transform(orientate, normal), 
+            np.dot(orientate[:3,:3], point) + points[i_point],
+            np.dot(orientate[:3,:3], normal), 
             piece.residues[i_point].color, 
             piece.objids[i_point])
 
@@ -516,8 +735,8 @@ def make_cylinder_trace_mesh(pieces, coil_detail=4, radius=0.3):
       triangle_store.setup_next_strip(cylinder.indices)
       for point, normal in zip(cylinder.points, cylinder.normals):
         triangle_store.add_vertex(
-            v3.transform(orientate, point) + points[i_point+1],
-            v3.transform(orientate, normal), 
+            np.dot(orientate[:3,:3], point) + points[i_point+1],
+            np.dot(orientate[:3,:3], normal), 
             piece.residues[i_point+1].color, 
             piece.objids[i_point+1])
 
@@ -589,20 +808,20 @@ def make_ball_and_stick_mesh(
     orientate = sphere.get_orientate(radius)
     for point in sphere.points:
       triangle_store.add_vertex(
-          v3.transform(orientate, point) + atom.pos,
+          np.dot(orientate[:3,:3], point) + atom.pos,
           point, # same as normal!
           atom.residue.color, 
           atom.objid)
 
   for bond in rendered_soup.bonds:
-    tangent = 0.5*bond.tangent
+    tangent = bond.tangent.scale(0.5)
 
     orientate = cylinder.get_orientate(tangent, bond.up, radius)
     triangle_store.setup_next_strip(cylinder.indices)
     for point, normal in zip(cylinder.points, cylinder.normals):
       triangle_store.add_vertex(
-          v3.transform(orientate, point) + bond.atom1.pos,
-          v3.transform(orientate, normal), 
+          np.dot(orientate[:3,:3], point) + bond.atom1.pos,
+          np.dot(orientate[:3,:3], normal), 
           bond.atom1.residue.color, 
           bond.atom1.objid)
 
@@ -610,8 +829,8 @@ def make_ball_and_stick_mesh(
     triangle_store.setup_next_strip(cylinder.indices)
     for point, normal in zip(cylinder.points, cylinder.normals):
       triangle_store.add_vertex(
-          v3.transform(orientate, point) + bond.atom2.pos,
-          v3.transform(orientate, normal), 
+          np.dot(orientate[:3,:3], point) + bond.atom2.pos,
+          np.dot(orientate[:3,:3], normal), 
           bond.atom2.residue.color, 
           bond.atom2.objid)
 
@@ -776,7 +995,7 @@ class MolecularViewerCanvas(app.Canvas):
         self.program = Program(semilight_vertex, semilight_fragment)
         self.picking_program = Program(picking_vertex, picking_fragment)
 
-        soup = pdbatoms.Soup(fname)
+        soup = parse.load_soup(fname)
         rendered_soup = RenderedSoup(soup)
         self.rendered_soup = rendered_soup
 

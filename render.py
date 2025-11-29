@@ -7,16 +7,29 @@ polygon triangle strips to form meshes for OpenGL display.
 
 
 import math
-import pdbremix.v3 as v3
+import numpy as np
 
+
+def rotation_matrix(axis, angle):
+  """Create a 4x4 rotation matrix for rotating around axis by angle (radians)"""
+  axis = axis / np.linalg.norm(axis)
+  a = math.cos(angle / 2.0)
+  b, c, d = -axis * math.sin(angle / 2.0)
+  aa, bb, cc, dd = a*a, b*b, c*c, d*d
+  bc, ad, ac, ab, bd, cd = b*c, a*d, a*c, a*b, b*d, c*d
+  rot = np.array([[aa+bb-cc-dd, 2*(bc+ad), 2*(bd-ac), 0],
+                   [2*(bc-ad), aa+cc-bb-dd, 2*(cd+ab), 0],
+                   [2*(bd+ac), 2*(cd-ab), aa+dd-bb-cc, 0],
+                   [0, 0, 0, 1]], dtype=np.float32)
+  return rot
 
 
 def get_xy_face_transform(tangent, up, scale):
-  m = v3.identity()
-  left = v3.cross(up, tangent)
-  m[:3,0] = scale*v3.norm(left)
-  m[:3,1] = scale*v3.norm(up)
-  m[:3,2] = scale*v3.norm(tangent)
+  m = np.eye(4, dtype=np.float32)
+  left = np.cross(up, tangent)
+  m[:3,0] = scale * (left / np.linalg.norm(left))
+  m[:3,1] = scale * (up / np.linalg.norm(up))
+  m[:3,2] = scale * (tangent / np.linalg.norm(tangent))
   return m
 
 
@@ -31,37 +44,39 @@ def calc_cyclic_normals(arcs, tangent):
     j = i-1 if i>0 else n-1
     k = i+1 if i<n-1 else 0
     arc_diff = arcs[k] - arcs[j]
-    normals.append(v3.norm(v3.cross(arc_diff, tangent)))
+    cross = np.cross(arc_diff, tangent)
+    normals.append(cross / np.linalg.norm(cross))
   return normals
 
 
 class CircleProfile():
   def __init__(self, n_arc=10, radius=1.0):
     self.n_arc = n_arc
-    tangent = v3.vector(0, 0, 1)
-    rotator = v3.vector(0, radius, 0)
+    tangent = np.array([0, 0, 1], dtype=np.float32)
+    rotator = np.array([0, radius, 0], dtype=np.float32)
     self.arcs = []
-    angle = v3.radians(360/n_arc)
-    rotation = v3.rotation(tangent, angle)
-    self.arcs.append(v3.vector(rotator))
+    angle = math.radians(360/n_arc)
+    rotation = rotation_matrix(tangent, angle)
+    self.arcs.append(rotator.copy())
     for i_segment in range(n_arc-1):
-      rotator = v3.transform(rotation, rotator)
-      self.arcs.append(rotator)
+      rotator = np.dot(rotation[:3,:3], rotator)
+      self.arcs.append(rotator.copy())
     self.normals = calc_cyclic_normals(self.arcs, tangent)
 
 
 class RectProfile():
   def __init__(self, width=1.5, thickness=0.3):
-    tangent = v3.vector(0, 0, 1)
-    up = v3.vector(0, width, 0)
-    right = v3.cross(up, tangent)
+    tangent = np.array([0, 0, 1], dtype=np.float32)
+    up = np.array([0, width, 0], dtype=np.float32)
+    right = np.cross(up, tangent)
     right = thickness/width*right
+    zero = np.zeros(3, dtype=np.float32)
     self.arcs = [
         right + up,
-              + up,
+        zero + up,
       - right + up, 
       - right - up,
-              - up,
+        zero - up,
         right - up]
     self.normals = calc_cyclic_normals(self.arcs, tangent)
 
@@ -90,7 +105,7 @@ class TubeBuilder():
     m = get_xy_face_transform(
         self.trace.tangents[0], self.trace.ups[0], 1.0)
     arcs = [
-        v3.transform(m, a) + self.trace.points[0] 
+        np.dot(m[:3,:3], a) + self.trace.points[0] 
         for a in self.profile.arcs]
     normal = -self.trace.tangents[0]
     for i_arc in range(n_arc):
@@ -116,9 +131,9 @@ class TubeBuilder():
       m = get_xy_face_transform(
           self.trace.tangents[i], self.trace.ups[i], 1.0)
       arcs = [
-          v3.transform(m, a) + self.trace.points[i] 
+          np.dot(m[:3,:3], a) + self.trace.points[i] 
           for a in self.profile.arcs]
-      normals = [v3.transform(m, n) for n in self.profile.normals]
+      normals = [np.dot(m[:3,:3], n) for n in self.profile.normals]
       for i_arc in range(n_arc):
         vertex_buffer.add_vertex(
             arcs[i_arc], normals[i_arc], self.color, self.trace.objids[i])
@@ -134,7 +149,7 @@ class TubeBuilder():
     m = get_xy_face_transform(
         self.trace.tangents[i_point], self.trace.ups[i_point], 1.0)
     arcs = [
-        v3.transform(m, a) + self.trace.points[i_point] 
+        np.dot(m[:3,:3], a) + self.trace.points[i_point] 
         for a in self.profile.arcs]
     normal = self.trace.tangents[i_point]
     for i_arc in reversed(range(n_arc)):
@@ -153,12 +168,12 @@ class TubeBuilder():
 class Arrow:
   def __init__(self, length, width, thickness):
     self.vertices = [
-      v3.vector( thickness,      0,  length),
-      v3.vector( thickness, -width, -length),
-      v3.vector( thickness,  width, -length),
-      v3.vector(-thickness,      0,  length),
-      v3.vector(-thickness, -width, -length),
-      v3.vector(-thickness,  width, -length),
+      np.array([ thickness,      0,  length], dtype=np.float32),
+      np.array([ thickness, -width, -length], dtype=np.float32),
+      np.array([ thickness,  width, -length], dtype=np.float32),
+      np.array([-thickness,      0,  length], dtype=np.float32),
+      np.array([-thickness, -width, -length], dtype=np.float32),
+      np.array([-thickness,  width, -length], dtype=np.float32),
     ]
     self.indices = [1, 0, 2, 3, 4, 5]
     n_arc = 3
@@ -181,8 +196,8 @@ class Cylinder:
       for j in range(n_arc):
         x = radius * math.cos(j * arc_angle)
         y = radius * math.sin(j * arc_angle)
-        self.normals.append(v3.vector(x, y, 0.0))
-        self.points.append(v3.vector(x, y, z))
+        self.normals.append(np.array([x, y, 0.0], dtype=np.float32))
+        self.points.append(np.array([x, y, z], dtype=np.float32))
     for i_arc in range(n_arc):
       j_arc = (i_arc+1) % n_arc
       self.indices.extend(
@@ -195,9 +210,12 @@ class Cylinder:
     Transform stretches the length to the length of tangent and
     the radius to scale.
     """
-    return v3.combine(
-        get_xy_face_transform(tangent, up, scale),
-        v3.scaling_matrix(1.0, 1.0, v3.mag(tangent)/scale))
+    # Create scaling matrix
+    z_scale = np.linalg.norm(tangent) / scale
+    scaling = np.eye(4, dtype=np.float32)
+    scaling[2,2] = z_scale
+    # Combine transforms
+    return np.dot(get_xy_face_transform(tangent, up, scale), scaling)
 
 
 
@@ -215,7 +233,7 @@ class Sphere:
       for i_arc in range(n_arc):
         x = scale * radius * math.cos(i_arc * arc_angle);
         y = scale * radius * math.sin(i_arc * arc_angle);
-        self.points.append(v3.vector(x,y,z))
+        self.points.append(np.array([x,y,z], dtype=np.float32))
     for i_stack in range(n_stack-1):
       for i_arc in range(n_arc):
         j_arc = (i_arc+1) % n_arc
@@ -230,6 +248,8 @@ class Sphere:
     self.n_vertex = n_stack*n_arc
 
   def get_orientate(self, scale):
-    return v3.scaling_matrix(scale, scale, scale)
+    m = np.eye(4, dtype=np.float32)
+    m[0,0] = m[1,1] = m[2,2] = scale
+    return m
 
 
