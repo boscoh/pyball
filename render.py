@@ -7,7 +7,7 @@ polygon triangle strips to form meshes for OpenGL display.
 
 
 import math
-from pdbremix import v3numpy as v3
+import pdbremix.v3 as v3
 
 
 
@@ -82,7 +82,7 @@ class TubeBuilder():
 
     # draw front face
     indices = []
-    for i_arc in range((n_arc-1)/2):
+    for i_arc in range((n_arc-1)//2):
       indices.extend([i_arc, i_arc+1, n_arc-1-i_arc])
       indices.extend([n_arc-1-i_arc, i_arc+1, n_arc-2-i_arc])
     vertex_buffer.setup_next_strip(indices)
@@ -125,7 +125,7 @@ class TubeBuilder():
 
     # draw back face
     indices = []
-    for i_arc in range((n_arc-1)/2):
+    for i_arc in range((n_arc-1)//2):
       indices.extend([i_arc, i_arc+1, n_arc-1-i_arc])
       indices.extend([n_arc-1-i_arc, i_arc+1, n_arc-2-i_arc])
     vertex_buffer.setup_next_strip(indices)

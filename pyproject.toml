@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyball"
+version = "0.1.0"
+description = "Molecular visualization tool for PDB files"
+readme = "readme.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Bosco Ho", email = "boscoh@gmail.com"}
+]
+dependencies = [
+    "numpy>=1.20.0",
+    "vispy>=0.14.0",
+    "pyopengl>=3.1.0",
+    "pyqt6>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipython>=8.0.0",
+]
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.uv.sources]
+pdbremix = { path = "pdbremix", editable = true }
