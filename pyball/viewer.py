@@ -70,7 +70,12 @@ class MolecularViewerCanvas(app.Canvas):
     """
 
     def __init__(self, fname):
-        app.Canvas.__init__(self, title="Molecular viewer", keys="interactive")
+        app.Canvas.__init__(
+            self,
+            title="Molecular viewer",
+            keys="interactive",
+            config={"depth_size": 24},
+        )
         size = (800, 600)
         self.size = size
         self.program = Program(semilight_vertex, semilight_fragment)
