@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2025-11-29
+
+### 🔧 Improvements
+
+- **Code Quality**: Added comprehensive docstrings to all main modules
+- **Documentation**: Added LICENSE (MIT) and CONTRIBUTING.md files
+- **Package Metadata**: Updated pyproject.toml with proper classifiers and keywords
+- **CLI Entry Point**: Added `pyball` command via project.scripts
+- **Code Cleanup**: Removed TODO comments and unused files
+- **Version Bump**: Updated version to 1.0.1 to match improvements
+
+### 🗑️ Removed
+
+- Removed unused `main.py` placeholder file
+
+### 📦 Package Improvements
+
+- Added PyPI classifiers for better discoverability
+- Added pytest to dev dependencies
+- Version number now matches release tag
+
 ## [1.0.0] - 2025-11-29
 
 ### 🎉 Major Release: pdbstruct Migration Complete

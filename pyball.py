@@ -1,6 +1,28 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+"""
+PyBall: An OpenGL ES-based protein structure viewer.
+
+This module provides a complete interactive 3D visualization system for
+protein structures from PDB files, featuring:
+- Ball-and-stick rendering
+- Cartoon (ribbon) representation
+- Cylinder trace visualization
+- C-alpha arrow representation
+- Secondary structure detection (helices/sheets)
+- Interactive rotation and zoom controls
+
+Usage:
+    python pyball.py <pdb_file>
+    
+Controls:
+    Mouse drag: Rotate view
+    Mouse wheel: Zoom
+    's': Toggle sidechain display
+    'q': Quit application
+"""
+
 import numpy as np
 
 from vispy import app, scene, gloo
@@ -27,8 +49,8 @@ from ctypes import c_float
 from pdbstruct import parse
 from pdbstruct import vector3d as v3
 from pdbstruct.vector3d import Vector3d, Matrix3d
-# from pdbstruct.store import backbone_atoms  # TODO: Check if this exists
-backbone_atoms = ['N', 'CA', 'C', 'O']  # Temporary hardcode
+
+backbone_atoms = ['N', 'CA', 'C', 'O']
 
 
 #########################################################

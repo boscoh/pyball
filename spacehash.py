@@ -1,8 +1,26 @@
+"""
+Spatial hashing for efficient proximity detection in 3D space.
+
+This module implements a space-partitioning data structure that enables
+fast nearest-neighbor searches and close-pair detection for 3D vertices.
+"""
+
 import array
 import math
 
 
 class SpaceHash(object):
+  """
+  3D spatial hash for finding close pairs of vertices efficiently.
+  
+  Divides 3D space into a grid and uses hash-based indexing to quickly
+  find vertices that are within a specified distance of each other.
+  
+  Args:
+      vertices: List of 3D points (x, y, z)
+      div: Grid cell size (default: 5.3)
+      padding: Extra space around bounding box (default: 0.05)
+  """
 
   def __init__(self, vertices, div=5.3, padding=0.05):
     self.vertices = vertices

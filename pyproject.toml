@@ -4,13 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyball"
-version = "0.1.0"
-description = "Molecular visualization tool for PDB files"
+version = "1.0.0"
+description = "Molecular visualization tool for PDB files using modern pdbstruct library"
 readme = "readme.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Bosco Ho", email = "boscoh@gmail.com"}
+]
+keywords = ["pdb", "protein", "visualization", "molecular", "structure", "opengl"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Visualization",
 ]
 dependencies = [
     "numpy>=1.20.0",
@@ -20,9 +29,13 @@ dependencies = [
     "pdbstruct>=0.1.0",
 ]
 
+[project.scripts]
+pyball = "pyball:main"
+
 [project.optional-dependencies]
 dev = [
     "ipython>=8.0.0",
+    "pytest>=7.0.0",
 ]
 
 [tool.uv]
